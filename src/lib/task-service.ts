@@ -254,6 +254,12 @@ export class TaskService {
       .pick({ resultDescription: true, resultUrl: true })
       .strict()
       .parse(body);
+    if (!input.resultDescription?.trim() && !input.resultUrl)
+      throw new ApiError(
+        400,
+        "EMPTY_RESULT",
+        "Добавьте описание или ссылку на результат.",
+      );
     const row = await this.proposal(id);
     if (row.proposal.status !== "accepted" || row.proposal.stageConfirmedAt)
       throw conflict();
@@ -269,7 +275,11 @@ export class TaskService {
       p.status !== "accepted" ||
       !(p.resultDescription?.trim() || p.resultUrl)
     )
-      throw conflict();
+      throw new ApiError(
+        409,
+        "INVALID_STATE",
+        "Для подтверждения примите отклик и дождитесь результата.",
+      );
     if (p.stageConfirmedAt) return p;
     return this.saveProposal(row, {
       ...p,

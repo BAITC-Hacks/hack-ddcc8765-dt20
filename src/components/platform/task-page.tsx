@@ -5,6 +5,7 @@ import { ArrowLeft, CheckCircle2, Send } from "lucide-react";
 import { collaborationGateway } from "@/lib/collaboration-gateway";
 import { FIELD_SECTIONS } from "@/lib/fields";
 import type { Team } from "@/lib/collaboration-contracts";
+import { ProposalCard } from "./proposal-card";
 import {
   EmptyState,
   LoadState,
@@ -16,8 +17,19 @@ import {
   useTeamSelection,
 } from "./shared";
 
-function ProposalForm({ taskId, teams }: { taskId: string; teams: Team[] }) {
-  const [teamId, setTeamId] = useTeamSelection(teams);
+function ProposalForm({
+  taskId,
+  teams,
+  teamId,
+  setTeamId,
+  onSubmitted,
+}: {
+  taskId: string;
+  teams: Team[];
+  teamId: string;
+  setTeamId: (id: string) => void;
+  onSubmitted: () => void;
+}) {
   const [idea, setIdea] = useState("");
   const [plan, setPlan] = useState("");
   const [deadline, setDeadline] = useState("");
@@ -76,6 +88,7 @@ function ProposalForm({ taskId, teams }: { taskId: string; teams: Team[] }) {
                 prototypeUrl: url.trim() || null,
               });
               setSubmitted(true);
+              onSubmitted();
             });
           }}
         >
@@ -160,6 +173,16 @@ export function TaskPage({ id }: { id: string }) {
     return { task, teams };
   }, [id]);
   const task = resource.data?.task;
+  const teams = resource.data?.teams ?? [];
+  const [teamId, setTeamId] = useTeamSelection(teams);
+  const own = useResource(
+    () =>
+      teamId ? collaborationGateway.teamProposals(teamId) : Promise.resolve([]),
+    [teamId, id],
+  );
+  const proposals = (own.data ?? []).filter(
+    (p) => p.taskId === id && p.teamId === teamId,
+  );
   return (
     <PlatformShell>
       <Link href="/catalog" className="inline-link">
@@ -208,6 +231,42 @@ export function TaskPage({ id }: { id: string }) {
                   </dl>
                 </section>
               ))}
+              <section aria-labelledby="own-proposals-title">
+                <h2 id="own-proposals-title">Мои отклики по этой задаче</h2>
+                <label>
+                  Показать отклики команды
+                  <select
+                    value={teamId}
+                    onChange={(e) => setTeamId(e.target.value)}
+                    disabled={!teams.length}
+                  >
+                    {teams.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name} · {team.xp} XP
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <LoadState {...own} retry={own.reload} />
+                {proposals.map((proposal) => (
+                  <ProposalCard
+                    key={proposal.id}
+                    proposal={proposal}
+                    team={teams.find((team) => team.id === proposal.teamId)}
+                    title={task.confirmedContent.title}
+                    role="student"
+                    onChange={() => {
+                      own.reload();
+                      resource.reload();
+                    }}
+                  />
+                ))}
+                {!own.loading && !own.error && !proposals.length && (
+                  <p className="muted">
+                    У выбранной команды пока нет откликов на эту задачу.
+                  </p>
+                )}
+              </section>
             </div>
             <aside className="detail-aside">
               <section className="panel readiness-summary">
@@ -234,7 +293,14 @@ export function TaskPage({ id }: { id: string }) {
                   </div>
                 ))}
               </section>
-              <ProposalForm key={id} taskId={id} teams={resource.data!.teams} />
+              <ProposalForm
+                key={id}
+                taskId={id}
+                teams={teams}
+                teamId={teamId}
+                setTeamId={setTeamId}
+                onSubmitted={own.reload}
+              />
             </aside>
           </div>
         </>

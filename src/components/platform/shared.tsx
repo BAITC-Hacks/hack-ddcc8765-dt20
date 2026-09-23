@@ -1,6 +1,7 @@
 "use client";
 
 import { SiteHeader, SiteFooter } from "@/components/app-chrome";
+import * as Dialog from "@radix-ui/react-dialog";
 import {
   useCallback,
   useEffect,
@@ -11,7 +12,12 @@ import {
 } from "react";
 import { ArrowUpRight, LoaderCircle, RefreshCw, Sparkles } from "lucide-react";
 import { dataMode } from "@/lib/gateway";
-import { collaborationGateway } from "@/lib/collaboration-gateway";
+import {
+  collaborationGateway,
+  resetDemoData,
+  restoreDemoData,
+  hasDemoBackup,
+} from "@/lib/collaboration-gateway";
 import { LEVELS, type Score } from "@/lib/contracts";
 import type { Proposal, Team } from "@/lib/collaboration-contracts";
 
@@ -141,9 +147,20 @@ export function EmptyState({
     </div>
   );
 }
-export function SeedDemo({ onDone }: { onDone: () => void }) {
+export function SeedDemo({
+  onDone,
+  allowReset = false,
+}: {
+  onDone: () => void;
+  allowReset?: boolean;
+}) {
   const action = useAction();
-  const [done, setDone] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [resetOpen, setResetOpen] = useState(false);
+  const backup = useResource(
+    async () => allowReset && hasDemoBackup(),
+    [allowReset],
+  );
   return (
     <div className="demo-banner">
       <div>
@@ -152,35 +169,105 @@ export function SeedDemo({ onDone }: { onDone: () => void }) {
           5 черновиков, 5 карточек разных уровней и 5 откликов. Примеры
           синтетические; ваши задачи сохранятся.
         </p>
-        {done && (
-          <p role="status">
-            Примеры добавлены. Повторное добавление не меняет ваши правки.
-          </p>
-        )}
+        {notice && <p role="status">{notice}</p>}
         {action.error && (
           <p className="field-error" role="alert">
             {action.error}
           </p>
         )}
       </div>
-      <button
-        className="button secondary"
-        disabled={action.busy}
-        onClick={() =>
-          void action.run(async () => {
-            await collaborationGateway.seedDemo();
-            setDone(true);
-            onDone();
-          })
-        }
-      >
-        {action.busy ? (
-          <LoaderCircle className="spin" size={17} />
-        ) : (
-          <Sparkles size={17} />
+      <div className="demo-actions">
+        {backup.data && (
+          <button
+            className="button secondary"
+            disabled={action.busy}
+            onClick={() =>
+              void action.run(async () => {
+                await restoreDemoData();
+                setNotice(
+                  "Последний сброс отменён. Демопримеры, их результаты и XP восстановлены.",
+                );
+                onDone();
+              })
+            }
+          >
+            Отменить последний сброс
+          </button>
         )}
-        {action.busy ? "Добавляем…" : "Добавить демопримеры"}
-      </button>
+        <button
+          className="button secondary"
+          disabled={action.busy}
+          onClick={() =>
+            void action.run(async () => {
+              await collaborationGateway.seedDemo();
+              setNotice(
+                "Примеры добавлены. Повторное добавление не меняет ваши правки.",
+              );
+              onDone();
+            })
+          }
+        >
+          {action.busy ? (
+            <LoaderCircle className="spin" size={17} />
+          ) : (
+            <Sparkles size={17} />
+          )}
+          {action.busy ? "Добавляем…" : "Добавить демопримеры"}
+        </button>
+        {allowReset && dataMode === "local" && (
+          <Dialog.Root
+            open={resetOpen}
+            onOpenChange={(open) => {
+              if (!action.busy) setResetOpen(open);
+            }}
+          >
+            <Dialog.Trigger asChild>
+              <button className="button text-button" disabled={action.busy}>
+                Сбросить демопримеры
+              </button>
+            </Dialog.Trigger>
+            <Dialog.Portal>
+              <Dialog.Overlay className="dialog-overlay" />
+              <Dialog.Content className="drafts-dialog">
+                <Dialog.Title>Восстановить демопримеры?</Dialog.Title>
+                <Dialog.Description>
+                  Ваши изменения в примерах, их отклики и XP будут сброшены.
+                  Созданные вами задачи и отклики сохранятся. Перед сбросом
+                  будет создана резервная копия.
+                </Dialog.Description>
+                <div className="proposal-decisions">
+                  <Dialog.Close asChild>
+                    <button className="button secondary" disabled={action.busy}>
+                      Отмена
+                    </button>
+                  </Dialog.Close>
+                  <button
+                    className="button primary"
+                    disabled={action.busy}
+                    onClick={() =>
+                      void action.run(async () => {
+                        await resetDemoData();
+                        setNotice(
+                          "Демопримеры восстановлены. Ваши задачи и отклики сохранены.",
+                        );
+                        onDone();
+                        setResetOpen(false);
+                      })
+                    }
+                  >
+                    {action.busy ? "Восстанавливаем…" : "Восстановить примеры"}
+                  </button>
+                </div>
+                {action.error && (
+                  <p className="field-error" role="alert">
+                    {action.error}
+                  </p>
+                )}
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
+        )}
+      </div>
     </div>
   );
 }

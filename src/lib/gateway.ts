@@ -102,7 +102,7 @@ export async function request<T>(
             : "Сервер не сохранил изменения. Попробуйте ещё раз.",
       );
     }
-    const parsed = schema.safeParse(await response.json());
+    const parsed = schema.safeParse(await response.json().catch(() => null));
     if (!parsed.success)
       throw new Error(
         "Сервер вернул некорректный ответ. Ваш текст сохранён в форме; повторите действие.",

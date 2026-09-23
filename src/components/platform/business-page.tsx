@@ -208,7 +208,7 @@ export function BusinessPage() {
           </EmptyState>
         )}
       </section>
-      <SeedDemo onDone={resource.reload} />
+      <SeedDemo onDone={resource.reload} allowReset />
     </PlatformShell>
   );
 }
