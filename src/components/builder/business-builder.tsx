@@ -75,6 +75,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saver = useRef<DraftSaver | null>(null);
   const currentTask = useRef<Task | null>(null);
+  const autoReviewed = useRef("");
   const fingerprint = task ? JSON.stringify(draftInput(task)) : "";
   currentTask.current = task;
 
@@ -152,6 +153,19 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
   }, [fingerprint]);
 
   useEffect(() => {
+    if (!task || task.step !== 3 || busy || conflict || dataMode !== "api") return;
+    if (task.qualityReview?.inputKey === qualityInputKey(task.draft, task.industry)) return;
+    if (autoReviewed.current === fingerprint) return;
+    const timer = setTimeout(() => {
+      autoReviewed.current = fingerprint;
+      void reviewQuality();
+    }, 1600);
+    return () => clearTimeout(timer);
+    // Recheck a completed edit once; manual retry remains available after errors.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fingerprint, busy, conflict, task?.step]);
+
+  useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (saveState !== "saved") {
         event.preventDefault();
@@ -170,7 +184,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
   }, [task?.step]);
 
   function update(change: Partial<Task>) {
-    setTask((current) => (current ? { ...current, ...change } : current));
+    setTask((current) => (current ? { ...current, ...change, qualityReview: null } : current));
     setAcknowledged(false);
     setNotice("");
   }
@@ -340,10 +354,8 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
   const dirty = task ? hasUnconfirmedChanges(task) : true;
   const qualityReview = task?.qualityReview?.inputKey === (task ? qualityInputKey(task.draft, task.industry) : "") ? task?.qualityReview : null;
   const score =
-    !dirty && task?.confirmedScore
-      ? task.confirmedScore
-      : qualityReview && task ? calculateReviewedScore(task.draft, qualityReview)
-      : calculateScore(task?.draft ?? newTask("preview").draft);
+    qualityReview?.source === "ai" && task ? calculateReviewedScore(task.draft, qualityReview)
+      : calculateScore(newTask("preview").draft);
   const readOnly = Boolean(busy);
   const answered =
     task?.questions.filter((q) => task.answers[q.id]?.trim()).length ?? 0;
@@ -828,7 +840,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
                             </div>
                           )}
                           {section.fields.map((field) => {
-                            const qualityIssue = qualityReview?.fields.find(item => item.field === field.key && !item.accepted);
+                            const qualityIssue = qualityReview?.fields.find(item => item.field === field.key && (!item.accepted || (item.score ?? 100) < 100));
                             const contactInvalid =
                               field.key === "contact" &&
                               Boolean(task.draft.contact.trim()) &&

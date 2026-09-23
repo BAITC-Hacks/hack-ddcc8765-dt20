@@ -68,7 +68,7 @@ export class TaskService {
   constructor(
     private repo: Repository,
     private owner: string,
-    private assessQuality: (content: TaskContent, industry: string) => Promise<QualityReview> = async (content, industry) => fallbackQualityReview(content, industry),
+    private assessQuality: (content: TaskContent, industry: string, context: Pick<Task, "rawText" | "questions" | "answers">) => Promise<QualityReview> = async (content, industry) => fallbackQualityReview(content, industry),
   ) {}
   private async owned(id: string) {
     z.uuid().parse(id);
@@ -98,7 +98,7 @@ export class TaskService {
     const task = {
       ...row.task,
       ...input,
-      qualityReview: row.task.qualityReview?.inputKey === qualityInputKey(input.draft, input.industry) ? row.task.qualityReview : null,
+      qualityReview: row.task.qualityReview?.inputKey === qualityInputKey(input.draft, input.industry) && row.task.rawText === input.rawText && JSON.stringify(row.task.questions) === JSON.stringify(input.questions) && JSON.stringify(row.task.answers) === JSON.stringify(input.answers) ? row.task.qualityReview : null,
       revision: row.revision + 1,
       updatedAt: new Date().toISOString(),
     };
@@ -121,8 +121,8 @@ export class TaskService {
   }
   private async qualityFor(task: Task, force = false) {
     const inputKey = qualityInputKey(task.draft, task.industry);
-    if (!force && task.qualityReview?.inputKey === inputKey) return task.qualityReview;
-    const review = qualityReviewSchema.parse(await this.assessQuality(task.draft, task.industry));
+    if (!force && task.qualityReview?.source === "ai" && task.qualityReview.inputKey === inputKey) return task.qualityReview;
+    const review = qualityReviewSchema.parse(await this.assessQuality(task.draft, task.industry, { rawText: task.rawText, questions: task.questions, answers: task.answers }));
     if (review.inputKey !== inputKey) throw conflict();
     return review;
   }

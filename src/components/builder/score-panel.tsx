@@ -25,6 +25,7 @@ export function ScorePanel({
   reviewDisabled: boolean;
   localMode: boolean;
 }) {
+  const verified = qualityReview?.source === "ai";
   const missing = score.groups
     .flatMap((group) => group.missing)
     .sort((a, b) => b.points - a.points);
@@ -49,22 +50,22 @@ export function ScorePanel({
         </div>
         <div
           className="score-dial"
-          style={{ "--score": `${score.total}%` } as React.CSSProperties}
+          style={{ "--score": `${verified ? score.total : 0}%` } as React.CSSProperties}
         >
           <div>
-            <strong data-testid="score-total">{score.total}</strong>
+            <strong data-testid="score-total">{verified ? score.total : "—"}</strong>
             <span>из 100 баллов</span>
           </div>
         </div>
         <span className={`level-badge ${score.level}`}>
-          {LEVELS[score.level].label}
+          {verified ? LEVELS[score.level].label : "Ожидает AI-проверки"}
         </span>
         <p className="score-caption">
-          {dirty
+          {!verified ? "Рейтинг появится после смысловой проверки ответов и карточки с ИИ." : dirty
             ? "Предварительная оценка. Баллы закрепятся после подтверждения."
             : "Сведения подтверждены вами. Рейтинг карточки сохранён."}
         </p>
-        {confirmed && dirty && (
+        {verified && confirmed && dirty && (
           <div className="confirmed-score">
             Подтверждено: <b>{confirmed.total}</b>
             {delta !== 0 && (
@@ -81,12 +82,12 @@ export function ScorePanel({
               <div>
                 <span>{group.label}</span>
                 <strong>
-                  {group.earned}
+                  {verified ? group.earned : "—"}
                   <em>/{group.max}</em>
                 </strong>
               </div>
               <progress
-                value={group.earned}
+                value={verified ? group.earned : 0}
                 max={group.max}
                 aria-label={`${group.label}: ${group.earned} из ${group.max}`}
               />
@@ -96,9 +97,9 @@ export function ScorePanel({
         {editable && (
           <div className="quality-summary">
             <p>{qualityReview?.source === "ai"
-              ? "Содержание проверено ИИ. Баллы рассчитаны по фиксированным правилам."
+              ? "ИИ проверил ответы и карточку. Баллы учитывают качество каждого ответа по единой шкале."
               : qualityReview ? "Резервная проверка по правилам. Смысловая оценка ИИ не выполнена."
-              : "Пока учтено заполнение полей. Проверьте содержание перед подтверждением."}</p>
+              : "Смысловая проверка запускается автоматически после заполнения карточки."}</p>
             <button className="button secondary" onClick={onReview} disabled={reviewDisabled}>
               {localMode ? "Проверить качество" : "Проверить качество с ИИ"}
             </button>

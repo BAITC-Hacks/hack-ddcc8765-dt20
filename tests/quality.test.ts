@@ -5,6 +5,13 @@ import { calculateReviewedScore, fallbackQualityReview, qualityInputKey } from "
 import { qualityDecisionsSchema } from "../src/lib/quality-contracts";
 
 describe("quality-aware fixed scoring", () => {
+  it("awards partial points for relevant but incomplete answers", () => {
+    const content = { ...emptyContent(), need: "Нужно автоматизировать приём заказов" };
+    const review = fallbackQualityReview(content, "Торговля");
+    review.source = "ai";
+    review.fields = review.fields.map(item => ({ ...item, score: item.field === "need" ? 50 : 0 }));
+    expect(calculateReviewedScore(content, review).total).toBe(5);
+  });
   it("accepts numeric phones and measurable numeric targets without accepting numeric prose", () => {
     const content = { ...emptyContent(), contact: "77012345678", successMetric: "Количество обработанных заявок за день", successTarget: "20", users: "12345" };
     expect(calculateScore(content).total).toBe(20);

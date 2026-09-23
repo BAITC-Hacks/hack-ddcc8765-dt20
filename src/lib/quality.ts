@@ -1,10 +1,10 @@
 import { FIELD_KEYS, type TaskContent, type Score } from "./contracts";
-import { calculateScore } from "./scoring";
+import { calculateScore, groups, readiness } from "./scoring";
 import { QUALITY_FIELDS, type QualityReview } from "./quality-contracts";
 
 /** Exact canonical identity avoids stale reviews and hash collisions. Never log it. */
 export function qualityInputKey(content: TaskContent, industry: string): string {
-  return JSON.stringify(["quality-v1", industry, ...FIELD_KEYS.map(key => content[key])]);
+  return JSON.stringify(["quality-v2", industry, ...FIELD_KEYS.map(key => content[key])]);
 }
 
 export function fallbackQualityReview(content: TaskContent, industry: string): QualityReview {
@@ -28,23 +28,24 @@ export function fallbackQualityReview(content: TaskContent, industry: string): Q
   };
 }
 
-/** The model only vetoes field eligibility. All weights and arithmetic stay in code. */
+/** AI grades each field; fixed weights and final arithmetic stay in code. */
 export function calculateReviewedScore(content: TaskContent, review: QualityReview): Score {
   const decisions = new Map(review.fields.map(item => [item.field, item]));
   const basic = new Map(fallbackQualityReview(content, "").fields.map(item => [item.field, item.accepted]));
-  const eligible = { ...content };
-  for (const field of QUALITY_FIELDS) if (!basic.get(field) || !decisions.get(field)?.accepted) eligible[field] = "";
-  const score = calculateScore(eligible);
-  return {
-    ...score,
-    groups: score.groups.map(group => ({
-      ...group,
-      missing: group.missing.map(item => {
-        const decision = decisions.get(item.field as typeof QUALITY_FIELDS[number]);
-        return decision && !decision.accepted
-          ? { ...item, label: decision.suggestion || decision.reason }
-          : item;
-      }),
-    })),
-  };
+  const breakdown = groups.map(group => {
+    let earned = 0;
+    const missing: Score["groups"][number]["missing"] = [];
+    for (const rule of group.rules) {
+      const field = rule.field as typeof QUALITY_FIELDS[number];
+      const decision = decisions.get(field);
+      const percent = basic.get(field) && decision?.accepted ? (decision.score ?? 100) : 0;
+      const points = Math.floor(rule.points * percent / 100);
+      earned += points;
+      if (points < rule.points) missing.push({ field, points: rule.points - points,
+        label: decision?.suggestion || decision?.reason || rule.label });
+    }
+    return { id: group.id, label: group.label, max: group.rules.reduce((sum, rule) => sum + rule.points, 0), earned, missing };
+  });
+  const total = breakdown.reduce((sum, group) => sum + group.earned, 0);
+  return { total, level: readiness(total), groups: breakdown };
 }

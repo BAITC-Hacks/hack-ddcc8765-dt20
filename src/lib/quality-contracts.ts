@@ -8,6 +8,7 @@ export const QUALITY_FIELDS = [
 export const qualityDecisionSchema = z.object({
   field: z.enum(QUALITY_FIELDS),
   accepted: z.boolean(),
+  score: z.number().int().min(0).max(100).optional(),
   reason: z.string().trim().min(1).max(500),
   suggestion: z.string().trim().max(500),
 }).strict();

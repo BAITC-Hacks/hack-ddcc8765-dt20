@@ -46,9 +46,12 @@ async function handle(request: Request) {
     const service = new TaskService(
       createRepository(),
       process.env.DEMO_OWNER_ID || "demo-business",
-      async (content, industry) => {
+      async (content, industry, context) => {
         guardAiRate();
-        return reviewQuality(content, industry, modelProvider());
+        const review = await reviewQuality(content, industry, modelProvider(), context);
+        if (review.source !== "ai" && process.env.AI_MODE !== "mock")
+          throw new ApiError(503, "AI_REVIEW_UNAVAILABLE", "ИИ сейчас недоступен. Карточка сохранена; повторите проверку, чтобы получить рейтинг.");
+        return review;
       },
     );
     let result: unknown;

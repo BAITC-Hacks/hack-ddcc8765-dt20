@@ -25,6 +25,7 @@ const quality = z.object({
   fields: z.array(z.object({
     field: z.enum(QUALITY_FIELDS),
     accepted: z.boolean(),
+    score: z.number().int().min(0).max(100),
     reason: z.string(),
     suggestion: z.string(),
   })),

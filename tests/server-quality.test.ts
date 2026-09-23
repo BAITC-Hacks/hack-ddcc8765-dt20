@@ -14,6 +14,13 @@ const decisions = () => ({
 });
 
 describe("AI quality review", () => {
+  it("passes every original question and business answer to the evaluator", async () => {
+    const context = { rawText: "Нужен учёт заказов", questions: [{ id: "q1", field: "need" as const, text: "Что нужно изменить?" }], answers: { q1: "Зелёный слон летает" } };
+    await reviewQuality(content, "Торговля", async (_kind, input) => {
+      expect(input).toMatchObject(context);
+      return decisions();
+    }, context);
+  });
   it("returns a validated review with all thirteen fields", async () => {
     const result = await reviewQuality(content, "Торговля", async (kind) => {
       expect(kind).toBe("quality");

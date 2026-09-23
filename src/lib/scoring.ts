@@ -56,7 +56,7 @@ export const validContact = (value: string) => {
     (/^\+?[\d\s()-]{10,22}$/.test(text) && text.replace(/\D/g, "").length >= 10)
   );
 };
-const groups: { id: string; label: string; rules: Rule[] }[] = [
+export const groups: { id: string; label: string; rules: Rule[] }[] = [
   {
     id: "context",
     label: "Контекст и потребность",
