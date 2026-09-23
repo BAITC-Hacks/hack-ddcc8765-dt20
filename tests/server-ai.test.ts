@@ -9,6 +9,26 @@ const input = {
   content: emptyContent(),
 };
 describe("server AI validation and fallback", () => {
+  it("retries questions that only repeat one topic or ask for a project title", async () => {
+    let attempts = 0;
+    const response = await assistQuestions(input, async () => {
+      attempts++;
+      return { questions: attempts === 1
+        ? [{ id: "a", field: "title", text: "Как назвать проект?" }, { id: "b", field: "users", text: "Кто пользователи?" }, { id: "c", field: "users", text: "Кто будет использовать решение?" }]
+        : fallbackQuestions(input.rawText, input.content) };
+    });
+    expect(attempts).toBe(2);
+    expect(response.source).toBe("ai");
+    expect(response.questions.some(q => q.field === "title")).toBe(false);
+  });
+  it("rejects duplicate question text even with different ids and fields", async () => {
+    const response = await assistQuestions(input, async () => ({ questions: [
+      { id: "a", field: "users", text: "Какие сведения доступны?" },
+      { id: "b", field: "need", text: "  какие СВЕДЕНИЯ доступны ? " },
+      { id: "c", field: "deadline", text: "Когда нужен результат?" },
+    ] }));
+    expect(response.source).toBe("fallback");
+  });
   it("returns explicit fallback without a configured model", async () => {
     const response = await assistQuestions(input);
     expect(response.source).toBe("fallback");

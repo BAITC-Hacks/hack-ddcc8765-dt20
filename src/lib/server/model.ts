@@ -19,6 +19,7 @@ const questions = z.object({
     id: z.string(),
     field: z.enum(FIELD_KEYS),
     text: z.string(),
+    gap: z.string(),
   })),
 });
 const quality = z.object({

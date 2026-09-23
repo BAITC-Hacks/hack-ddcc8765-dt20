@@ -77,6 +77,11 @@ export async function assistQuestions(
     const parsed = z
       .object({ questions: z.array(questionSchema).min(3).max(5) })
       .parse(value);
+    const texts = parsed.questions.map(q => q.text.normalize("NFKC").toLocaleLowerCase("ru").replace(/[^\p{L}\p{N}]+/gu, ""));
+    if (parsed.questions.some(q => q.field === "title") ||
+      new Set(parsed.questions.map(q => q.field)).size !== parsed.questions.length ||
+      new Set(texts).size !== texts.length)
+      throw new Error("Questions must cover distinct substantive gaps");
     return questionsResponseSchema.parse({ ...parsed, source: "ai" });
   });
   return (
