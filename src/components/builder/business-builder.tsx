@@ -41,6 +41,7 @@ import {
 import { FIELD_LIMITS, FIELD_SECTIONS } from "@/lib/fields";
 import { ScorePanel } from "./score-panel";
 import { TaskPreview } from "./task-preview";
+import { SiteHeader, SiteFooter } from "@/components/app-chrome";
 
 const steps = [
   { title: "Опишите задачу", subtitle: "Начнём с вашей идеи", icon: Lightbulb },
@@ -333,58 +334,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
 
   return (
     <>
-      <a href="#main" className="skip-link">
-        Перейти к содержимому
-      </a>
-      <header className="app-header builder-header">
-        <a
-          className="brand"
-          href="/catalog"
-          onClick={(event) => {
-            event.preventDefault();
-            void navigate("/catalog");
-          }}
-          aria-label="SanaBrief — каталог"
-        >
-          <img src="/icon.svg" alt="" width="36" height="36" />
-          <span>
-            Sana<span className="brand-light">Brief</span>
-          </span>
-        </a>
-        <div className="header-divider" />
-        <span className="header-context">Рабочее пространство бизнеса</span>
-        <div className="header-actions">
-          <button
-            className="button text-button"
-            disabled={readOnly || !task}
-            onClick={() => void navigate("/catalog")}
-          >
-            Каталог
-          </button>
-          <button
-            className="button text-button"
-            disabled={readOnly || !task}
-            onClick={() => void navigate("/business")}
-          >
-            Отклики команд
-          </button>
-          <span className={`mode-pill ${dataMode}`}>
-            <span />
-            {dataMode === "local" ? "Демо-режим" : "Серверный режим"}
-          </span>
-          <button
-            className="button text-button"
-            onClick={() => void showDrafts()}
-            disabled={readOnly || !task}
-          >
-            <FolderOpen size={17} />
-            Мои задачи
-          </button>
-          <span className="avatar" aria-label="Демопрофиль бизнеса">
-            Б
-          </span>
-        </div>
-      </header>
+      <SiteHeader onNavigate={navigate} disabled={readOnly} />
       <div className="app-shell">
         <nav className="sidebar" aria-label="Этапы создания задачи">
           <div className="sidebar-label">НОВАЯ ВОЗМОЖНОСТЬ</div>
@@ -395,6 +345,14 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
           <p className="sidebar-intro">
             Понятная задача — первый шаг к сильному решению.
           </p>
+          <button
+            className="button secondary compact builder-drafts-link"
+            onClick={() => void showDrafts()}
+            disabled={readOnly || !task}
+          >
+            <FolderOpen size={17} />
+            Мои задачи
+          </button>
           <ol className="steps">
             {steps.map((step, index) => {
               const number = index + 1;
@@ -1076,6 +1034,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
           )}
         </main>
       </div>
+      <SiteFooter />
       {task && (
         <TaskPreview
           open={preview !== null}

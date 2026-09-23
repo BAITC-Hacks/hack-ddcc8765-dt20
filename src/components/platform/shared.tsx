@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { SiteHeader, SiteFooter } from "@/components/app-chrome";
 import {
   useCallback,
   useEffect,
@@ -10,73 +9,20 @@ import {
   type DependencyList,
   type ReactNode,
 } from "react";
-import {
-  ArrowUpRight,
-  LoaderCircle,
-  Plus,
-  RefreshCw,
-  Sparkles,
-} from "lucide-react";
+import { ArrowUpRight, LoaderCircle, RefreshCw, Sparkles } from "lucide-react";
 import { dataMode } from "@/lib/gateway";
 import { collaborationGateway } from "@/lib/collaboration-gateway";
 import { LEVELS, type Score } from "@/lib/contracts";
 import type { Proposal, Team } from "@/lib/collaboration-contracts";
 
 export function PlatformShell({ children }: { children: ReactNode }) {
-  const path = usePathname();
   return (
     <>
-      <a className="skip-link" href="#main">
-        Перейти к содержимому
-      </a>
-      <header className="app-header platform-header">
-        <Link
-          className="brand"
-          href="/catalog"
-          aria-label="SanaBrief — каталог"
-        >
-          <img src="/icon.svg" width="36" height="36" alt="" />
-          <span>
-            Sana<span className="brand-light">Brief</span>
-          </span>
-        </Link>
-        <nav className="platform-nav" aria-label="Основная навигация">
-          {[
-            ["/catalog", "Каталог задач"],
-            ["/student", "Кабинет команды"],
-            ["/business", "Кабинет бизнеса"],
-          ].map(([href, label]) => (
-            <Link
-              key={href}
-              href={href}
-              aria-current={path === href ? "page" : undefined}
-            >
-              {label}
-            </Link>
-          ))}
-        </nav>
-        <div className="header-actions">
-          <span className={`mode-pill ${dataMode}`}>
-            <span />
-            {dataMode === "local" ? "Локальное демо" : "Общее демо"}
-          </span>
-          <Link className="button primary compact" href="/tasks/new">
-            <Plus size={16} />
-            Создать задачу
-          </Link>
-        </div>
-      </header>
+      <SiteHeader />
       <main id="main" className="platform-main">
         {children}
       </main>
-      <footer className="platform-footer">
-        SanaBrief · AI Sana{" "}
-        <span>
-          {dataMode === "local"
-            ? "Данные сохраняются в этом браузере. Для работы с разных устройств подключите общий сервер."
-            : "Общий демостенд: роли переключаются свободно, без личных учётных записей."}
-        </span>
-      </footer>
+      <SiteFooter />
     </>
   );
 }
