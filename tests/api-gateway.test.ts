@@ -24,11 +24,11 @@ describe("HTTP integration boundary", () => {
     const [path, options] = fetchMock.mock.calls[0];
     expect(path).toBe("/api/tasks/api-task/draft");
     expect(options.credentials).toBe("include");
-    expect(options.headers["If-Match"]).toBe(JSON.stringify(task.updatedAt));
     const body = JSON.parse(options.body);
     expect(body).not.toHaveProperty("confirmedScore");
     expect(body).not.toHaveProperty("confirmedContent");
     expect(body).not.toHaveProperty("publishedAt");
+    expect(body.expectedRevision).toBe(task.revision);
   });
   it.each([409, 412])(
     "surfaces version conflict %i without retrying over newer data",

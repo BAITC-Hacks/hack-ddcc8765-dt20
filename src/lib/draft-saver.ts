@@ -31,6 +31,7 @@ export class DraftSaver {
       .then(async () => {
         const saved = await this.persist({
           ...snapshot,
+          revision: this.saved.revision,
           updatedAt: this.saved.updatedAt,
         });
         this.saved = saved;

@@ -25,15 +25,17 @@ it("saves an undo while an older request is still in flight using the latest ver
   await Promise.resolve();
   expect(saver.isSaved(original)).toBe(false);
   const undo = saver.save(original);
-  finish({ ...changed, updatedAt: "version-2" });
+  finish({ ...changed, revision: 1, updatedAt: "version-2" });
   await first;
   await Promise.resolve();
   await Promise.resolve();
   expect(requests[1].updatedAt).toBe("version-2");
+  expect(requests[1].revision).toBe(1);
   expect(requests[1].rawText).toBe("");
-  finish({ ...original, updatedAt: "version-3" });
+  finish({ ...original, revision: 2, updatedAt: "version-3" });
   await undo;
   expect(saver.isSaved(original)).toBe(true);
+  expect(saver.saved.revision).toBe(2);
 });
 
 it("retains the prior version on failure and permits a safe retry", async () => {

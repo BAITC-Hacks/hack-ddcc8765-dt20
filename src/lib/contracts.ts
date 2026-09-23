@@ -119,6 +119,7 @@ export const scoreSchema = z
 export type Score = z.infer<typeof scoreSchema>;
 export const taskSchema = z.object({
   id: z.string().min(1),
+  revision: z.number().int().nonnegative().default(0),
   rawText: z.string().max(8000),
   industry: z.string().max(100),
   draft: contentSchema,
@@ -141,6 +142,7 @@ export type DraftInput = Pick<
 export function newTask(id: string): Task {
   return {
     id,
+    revision: 0,
     rawText: "",
     industry: "Другое",
     draft: emptyContent(),

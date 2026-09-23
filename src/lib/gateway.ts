@@ -75,7 +75,6 @@ async function request<T>(
   schema: z.ZodType<T>,
   method = "GET",
   body?: unknown,
-  expectedVersion?: string,
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
@@ -84,9 +83,6 @@ async function request<T>(
       method,
       headers: {
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-        ...(expectedVersion
-          ? { "If-Match": JSON.stringify(expectedVersion) }
-          : {}),
       },
       credentials: "include",
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -157,8 +153,7 @@ export const gateway = {
         `/api/tasks/${encodeURIComponent(task.id)}/draft`,
         taskSchema,
         "PATCH",
-        draftInput(task),
-        task.updatedAt,
+        { ...draftInput(task), expectedRevision: task.revision },
       );
     return withLocalLock(() => {
       const current = currentVersion(task);
@@ -202,8 +197,7 @@ export const gateway = {
         `/api/tasks/${encodeURIComponent(task.id)}/confirm`,
         taskSchema,
         "POST",
-        { acknowledged: true },
-        task.updatedAt,
+        { acknowledged: true, expectedRevision: task.revision },
       );
     return withLocalLock(() => {
       const current = currentVersion(task);
@@ -219,8 +213,7 @@ export const gateway = {
         `/api/tasks/${encodeURIComponent(task.id)}/publish`,
         taskSchema,
         "POST",
-        {},
-        task.updatedAt,
+        { expectedRevision: task.revision },
       );
     return withLocalLock(() => {
       const current = currentVersion(task);
