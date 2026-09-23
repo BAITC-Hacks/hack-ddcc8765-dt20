@@ -339,12 +339,12 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
       <header className="app-header builder-header">
         <a
           className="brand"
-          href="/"
+          href="/catalog"
           onClick={(event) => {
             event.preventDefault();
-            void navigate("/tasks/new");
+            void navigate("/catalog");
           }}
-          aria-label="SanaBrief — новая задача"
+          aria-label="SanaBrief — каталог"
         >
           <img src="/icon.svg" alt="" width="36" height="36" />
           <span>
