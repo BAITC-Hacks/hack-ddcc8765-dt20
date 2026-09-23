@@ -60,6 +60,8 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
   const initialization = useRef<Promise<Task> | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const serverRevision = useRef(0);
+  const loadedTaskId = useRef<string | null>(null);
   const lastSaved = useRef("");
   const currentFingerprint = useRef("");
   const fingerprint = task ? JSON.stringify(draftInput(task)) : "";
@@ -77,6 +79,10 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
     loading
       .then((value) => {
         if (cancelled) return;
+        if (loadedTaskId.current !== value.id) {
+          loadedTaskId.current = value.id;
+          serverRevision.current = value.revision;
+        }
         lastSaved.current = JSON.stringify(draftInput(value));
         // Preserve the in-progress draft during Fast Refresh, including unsaved text.
         setTask((current) => (current?.id === value.id ? current : value));
@@ -100,10 +106,18 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
     setSaveState("saving");
     const job = saveQueue.current
       .catch(() => undefined)
-      .then(() => gateway.save(snapshot));
+      .then(() =>
+        gateway.save({ ...snapshot, revision: serverRevision.current }),
+      );
     saveQueue.current = job;
     return job
       .then((saved) => {
+        serverRevision.current = saved.revision;
+        setTask((current) =>
+          current?.id === saved.id
+            ? { ...current, revision: saved.revision }
+            : current,
+        );
         lastSaved.current = version;
         if (currentFingerprint.current === version) setSaveState("saved");
         return saved;
@@ -240,8 +254,9 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
       return;
     }
     await action("Подтверждаем", async () => {
-      await flush(task);
-      const saved = await gateway.confirm(task);
+      const flushed = await flush(task);
+      const saved = await gateway.confirm(flushed);
+      serverRevision.current = saved.revision;
       setTask(saved);
       setAcknowledged(false);
       setNotice(
@@ -254,8 +269,9 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
   async function publish() {
     if (!task) return;
     await action("Публикуем", async () => {
-      await flush(task);
-      const saved = await gateway.publish(task);
+      const flushed = await flush(task);
+      const saved = await gateway.publish(flushed);
+      serverRevision.current = saved.revision;
       setTask(saved);
       setNotice(
         dataMode === "local"

@@ -28,6 +28,7 @@ describe("HTTP integration boundary", () => {
     expect(body).not.toHaveProperty("confirmedScore");
     expect(body).not.toHaveProperty("confirmedContent");
     expect(body).not.toHaveProperty("publishedAt");
+    expect(body.expectedRevision).toBe(task.revision);
   });
   it("rejects a malformed question response", async () => {
     vi.stubGlobal(

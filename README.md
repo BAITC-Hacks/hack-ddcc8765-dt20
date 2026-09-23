@@ -100,3 +100,9 @@ tests/                      проверки бизнес-правил
 ```
 
 Сценарий демонстрации и границы ответственности: [docs/DEMO.md](docs/DEMO.md).
+# Сервер участника 2
+
+Серверные обработчики, Supabase, AI и каталог подключены в ветке `feat/backend-ai`.
+Настройка и проверки: [docs/BACKEND.md](docs/BACKEND.md).
+Контракт для участника 3: [docs/HANDOFF-PARTICIPANT-3.md](docs/HANDOFF-PARTICIPANT-3.md).
+Версионные запросы редактора: [docs/INTEGRATION.md](docs/INTEGRATION.md).

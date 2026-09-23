@@ -60,9 +60,11 @@ async function request<T>(
     });
     if (!response.ok)
       throw new Error(
-        response.status === 404
-          ? "Сервер не нашёл данные или нужный обработчик. Проверьте подключение API."
-          : "Сервер не сохранил изменения. Попробуйте ещё раз.",
+        response.status === 409
+          ? "Задача изменилась в другой вкладке. Скопируйте несохранённый текст и обновите страницу."
+          : response.status === 404
+            ? "Сервер не нашёл данные или нужный обработчик. Проверьте подключение API."
+            : "Сервер не сохранил изменения. Попробуйте ещё раз.",
       );
     const parsed = schema.safeParse(await response.json());
     if (!parsed.success)
@@ -117,7 +119,7 @@ export const gateway = {
         `/api/tasks/${encodeURIComponent(task.id)}/draft`,
         taskSchema,
         "PATCH",
-        draftInput(task),
+        { ...draftInput(task), expectedRevision: task.revision },
       );
     const current = readLocal()[task.id] ?? task;
     return writeLocal({
@@ -155,7 +157,7 @@ export const gateway = {
         `/api/tasks/${encodeURIComponent(task.id)}/confirm`,
         taskSchema,
         "POST",
-        { acknowledged: true },
+        { acknowledged: true, expectedRevision: task.revision },
       );
     return writeLocal(confirmTask(await this.get(task.id), true));
   },
@@ -165,7 +167,7 @@ export const gateway = {
         `/api/tasks/${encodeURIComponent(task.id)}/publish`,
         taskSchema,
         "POST",
-        {},
+        { expectedRevision: task.revision },
       );
     return writeLocal(publishTask(await this.get(task.id)));
   },
