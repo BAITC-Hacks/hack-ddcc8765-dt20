@@ -8,7 +8,7 @@
 4. Установить `NEXT_PUBLIC_DATA_MODE=api`, `AI_MODE=live`, `OPENAI_MODEL` в доступную модель с Structured Outputs.
 5. `npm.cmd run dev`. Открыть `/tasks/new`.
 
-Все маршруты реализованы в `src/app/api/[...path]/route.ts`. Логика состояния — `src/lib/server/service.ts`, адаптер Supabase — `database.ts`. Существующие типы Task и функция рейтинга используются без переименований.
+Все маршруты реализованы в `src/app/api/[...path]/route.ts`. Логика состояния — `src/lib/task-service.ts` (server/service.ts экспортирует её для совместимости), адаптер Supabase — `server/database.ts`. Локальный режим использует те же бизнес-правила с браузерным адаптером. Ключи и SDK остаются в server/database.ts и server/model.ts, клиент их не импортирует.
 
 ## Доступ и ограничения деморежима
 
@@ -20,31 +20,33 @@
 
 ## Реализованные операции
 
-| Метод | URL | Результат |
-|---|---|---|
-| GET | `/api/health` | Проверка приложения, не проверка базы |
-| POST | `/api/ai/questions` | `{questions, source}` |
-| POST | `/api/ai/card` | `{content, source, evidence?}` |
-| POST | `/api/tasks` | Task; id от клиента, повтор создания не перезаписывает данные |
-| GET | `/api/tasks/:id` | Полный Task текущего бизнеса |
-| PATCH | `/api/tasks/:id/draft` | Сохранённый Task |
-| POST | `/api/tasks/:id/confirm` | Подтверждённый Task, `{acknowledged:true,expectedRevision}` |
-| POST | `/api/tasks/:id/publish` | Опубликованный Task, `{expectedRevision}` |
-| GET | `/api/tasks?industry=…&level=…` | PublishedTask[] |
-| GET | `/api/catalog/:id` | PublishedTask без черновика и ответов |
-| GET | `/api/business/tasks` | Task[] текущего бизнеса |
-| GET | `/api/teams` | Team[] с вычисленным xp |
-| POST | `/api/tasks/:id/proposals` | Proposal |
-| GET | `/api/business/proposals?taskId=…` | Proposal[] текущего бизнеса |
-| PATCH | `/api/proposals/:id` | Proposal; тело `{status:"accepted"}` или rejected |
-| PATCH | `/api/proposals/:id/result` | Proposal; `{resultDescription,resultUrl}` |
-| POST | `/api/proposals/:id/confirm-stage` | Proposal; `{acknowledged:true}` |
+| Метод | URL                                | Результат                                                                       |
+| ----- | ---------------------------------- | ------------------------------------------------------------------------------- |
+| GET   | `/api/health`                      | Проверка приложения, не проверка базы                                           |
+| POST  | `/api/ai/questions`                | `{questions, source}`                                                           |
+| POST  | `/api/ai/card`                     | `{content, source, evidence?}`                                                  |
+| POST  | `/api/tasks`                       | Task; id от клиента, повтор создания не перезаписывает данные                   |
+| GET   | `/api/tasks/:id`                   | Полный Task текущего бизнеса                                                    |
+| PATCH | `/api/tasks/:id/draft`             | Сохранённый Task                                                                |
+| POST  | `/api/tasks/:id/confirm`           | Подтверждённый Task, `{acknowledged:true,expectedRevision}`                     |
+| POST  | `/api/tasks/:id/publish`           | Опубликованный Task, `{expectedRevision}`                                       |
+| GET   | `/api/tasks?industry=…&level=…`    | PublishedTask[]                                                                 |
+| GET   | `/api/catalog/:id`                 | PublishedTask без черновика и ответов                                           |
+| GET   | `/api/business/tasks`              | Task[] текущего бизнеса                                                         |
+| GET   | `/api/teams`                       | Team[] с вычисленным xp                                                         |
+| GET   | `/api/student/proposals?teamId=…`  | Proposal[] выбранной демокоманды                                                |
+| POST  | `/api/demo/seed`                   | `{acknowledged:true}` → `{ok:true}`; добавить фиксированный синтетический набор |
+| POST  | `/api/tasks/:id/proposals`         | Proposal                                                                        |
+| GET   | `/api/business/proposals?taskId=…` | Proposal[] текущего бизнеса                                                     |
+| PATCH | `/api/proposals/:id`               | Proposal; тело `{status:"accepted"}` или rejected                               |
+| PATCH | `/api/proposals/:id/result`        | Proposal; `{resultDescription,resultUrl}`                                       |
+| POST  | `/api/proposals/:id/confirm-stage` | Proposal; `{acknowledged:true}`                                                 |
 
 Подробные поля форм — в `HANDOFF-PARTICIPANT-3.md`. Все успешные запросы возвращают JSON с HTTP 200. Ошибки: `{error,code}`. Запись требует `Content-Type: application/json`, максимальный размер тела 64 KiB. Межсайтовые запросы записи запрещены.
 
 Supabase хранит три таблицы. tasks содержит owner_id, полный Task в payload и revision; proposals — task_id, team_id, полный Proposal и revision; teams — профили. revision используется для условного обновления: конкурентная запись возвращает 409 вместо потери изменений. После подтверждения этапа его результат и статус нельзя менять; XP вычисляется из подтверждённых этапов, а не накапливается повторными инкрементами.
 
-Браузерные роли не имеют доступа к таблицам. Включён RLS, доступ через SDK выполняется серверным ключом. SQL не удаляет существующие данные и добавляет пять синтетических команд. 5 черновиков, 5 опубликованных карточек и 5 откликов для окончательной демонстрации ещё предстоит подготовить с участником 3.
+Браузерные роли не имеют доступа к таблицам. Включён RLS, доступ через SDK выполняется серверным ключом. SQL не удаляет существующие данные и добавляет пять синтетических команд. Кнопка «Добавить демопримеры» вызывает защищённый теми же правилами `/api/demo/seed` и добавляет 5 черновиков, 5 опубликованных карточек и 5 откликов из `src/lib/demo-data.ts`. Фиксированные UUID и upsert с ignoreDuplicates сохраняют правки при повторных запросах. Операция не очищает базу; после частичного сбоя можно повторить её. При отсутствии демокоманд сообщает о необходимости применить schema.sql.
 
 ## AI
 

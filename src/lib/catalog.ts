@@ -1,4 +1,20 @@
-import type { Score, Task, TaskContent } from "./contracts";
+import { z } from "zod";
+import {
+  contentSchema,
+  scoreSchema,
+  type Score,
+  type Task,
+  type TaskContent,
+} from "./contracts";
+
+export const publishedTaskSchema = z.object({
+  id: z.string().min(1),
+  confirmedContent: contentSchema,
+  confirmedIndustry: z.string(),
+  confirmedScore: scoreSchema,
+  confirmedAt: z.string(),
+  publishedAt: z.string(),
+});
 
 /** Public projection. Never send the editable Task object to the catalog. */
 export type PublishedTask = {

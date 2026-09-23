@@ -98,14 +98,15 @@ export function createRepository(): Repository {
     },
     async createProposal(p) {
       checked(
-        await db
-          .from("proposals")
-          .insert({
+        await db.from("proposals").upsert(
+          {
             id: p.id,
             task_id: p.taskId,
             team_id: p.teamId,
             payload: p,
-          }),
+          },
+          { onConflict: "id", ignoreDuplicates: true },
+        ),
       );
     },
     async getProposal(id) {

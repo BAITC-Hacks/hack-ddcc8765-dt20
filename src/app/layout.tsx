@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SanaBrief — конструктор бизнес-задач",
+  title: "SanaBrief — задачи бизнеса и команды",
   description:
     "Превратите идею в понятную задачу для студенческой команды AI Sana.",
   icons: { icon: "/icon.svg" },

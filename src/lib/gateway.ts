@@ -21,7 +21,7 @@ export class SaveConflictError extends Error {
     this.name = "SaveConflictError";
   }
 }
-function withLocalLock<T>(work: () => T): Promise<T> {
+export function withLocalLock<T>(work: () => T | Promise<T>): Promise<T> {
   if (!navigator.locks)
     return Promise.reject(
       new Error(
@@ -42,7 +42,7 @@ function currentVersion(task: Task): Task {
     throw new SaveConflictError();
   return current;
 }
-function readLocal(): Record<string, Task> {
+export function readLocal(): Record<string, Task> {
   const value = window.localStorage.getItem(STORAGE_KEY);
   if (!value) return {};
   try {
@@ -53,7 +53,7 @@ function readLocal(): Record<string, Task> {
     );
   }
 }
-function writeLocal(task: Task): Task {
+export function writeLocal(task: Task): Task {
   const tasks = readLocal();
   tasks[task.id] = taskSchema.parse(task);
   try {
@@ -70,11 +70,12 @@ export function draftInput(task: Task): DraftInput {
   const { rawText, industry, draft, questions, answers, step, source } = task;
   return { rawText, industry, draft, questions, answers, step, source };
 }
-async function request<T>(
+export async function request<T>(
   path: string,
   schema: z.ZodType<T>,
   method = "GET",
   body?: unknown,
+  taskConflict = true,
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
@@ -89,14 +90,18 @@ async function request<T>(
       signal: controller.signal,
       cache: "no-store",
     });
-    if (response.status === 409 || response.status === 412)
+    if (taskConflict && (response.status === 409 || response.status === 412))
       throw new SaveConflictError();
-    if (!response.ok)
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
       throw new Error(
-        response.status === 404
-          ? "Сервер не нашёл данные или нужный обработчик. Проверьте подключение API."
-          : "Сервер не сохранил изменения. Попробуйте ещё раз.",
+        typeof problem?.error === "string"
+          ? problem.error
+          : response.status === 404
+            ? "Сервер не нашёл данные или нужный обработчик. Проверьте подключение API."
+            : "Сервер не сохранил изменения. Попробуйте ещё раз.",
       );
+    }
     const parsed = schema.safeParse(await response.json());
     if (!parsed.success)
       throw new Error(

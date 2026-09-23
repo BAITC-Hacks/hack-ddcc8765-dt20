@@ -336,7 +336,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
       <a href="#main" className="skip-link">
         Перейти к содержимому
       </a>
-      <header className="app-header">
+      <header className="app-header builder-header">
         <a
           className="brand"
           href="/"
@@ -354,6 +354,20 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
         <div className="header-divider" />
         <span className="header-context">Рабочее пространство бизнеса</span>
         <div className="header-actions">
+          <button
+            className="button text-button"
+            disabled={readOnly || !task}
+            onClick={() => void navigate("/catalog")}
+          >
+            Каталог
+          </button>
+          <button
+            className="button text-button"
+            disabled={readOnly || !task}
+            onClick={() => void navigate("/business")}
+          >
+            Отклики команд
+          </button>
           <span className={`mode-pill ${dataMode}`}>
             <span />
             {dataMode === "local" ? "Демо-режим" : "Серверный режим"}
@@ -1003,18 +1017,18 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
                           ) : (
                             <button
                               className="button primary"
-                              onClick={() => setPreview("published")}
+                              onClick={() => void navigate(`/tasks/${task.id}`)}
                             >
                               <Eye size={17} />
-                              Посмотреть карточку
+                              Открыть в каталоге
                             </button>
                           )}
                         </div>
                         {dataMode === "local" && (
                           <p className="small-note">
                             Демо-режим: черновик и публикация сохраняются в этом
-                            браузере. Общий каталог будет доступен после
-                            подключения сервера.
+                            браузере. Каталог и отклики доступны здесь же; для
+                            работы с разных устройств подключите сервер.
                           </p>
                         )}
                       </section>
