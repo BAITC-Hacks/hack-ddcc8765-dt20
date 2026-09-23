@@ -24,14 +24,25 @@ import {
   X,
 } from "lucide-react";
 import { INDUSTRIES, newTask, type Task } from "@/lib/contracts";
-import { dataMode, draftInput, gateway } from "@/lib/gateway";
+import {
+  dataMode,
+  draftInput,
+  gateway,
+  SaveConflictError,
+} from "@/lib/gateway";
+import { DraftSaver } from "@/lib/draft-saver";
 import { calculateScore, meaningful, validContact } from "@/lib/scoring";
 import { calculateReviewedScore, qualityInputKey } from "@/lib/quality";
 import { hasUnconfirmedChanges } from "@/lib/task-state";
-import { fallbackCard, fallbackQuestions } from "@/lib/assistance";
+import {
+  answersForQuestions,
+  fallbackCard,
+  fallbackQuestions,
+} from "@/lib/assistance";
 import { FIELD_LIMITS, FIELD_SECTIONS } from "@/lib/fields";
 import { ScorePanel } from "./score-panel";
 import { TaskPreview } from "./task-preview";
+import { SiteHeader, SiteFooter } from "@/components/app-chrome";
 
 const steps = [
   { title: "Опишите задачу", subtitle: "Начнём с вашей идеи", icon: Lightbulb },
@@ -51,6 +62,8 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("saved");
+  const [conflict, setConflict] = useState(false);
+  const conflictRef = useRef(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [preview, setPreview] = useState<"draft" | "published" | null>(null);
   const [draftsOpen, setDraftsOpen] = useState(false);
@@ -60,13 +73,10 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
   >(null);
   const initialization = useRef<Promise<Task> | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
-  const serverRevision = useRef(0);
-  const loadedTaskId = useRef<string | null>(null);
-  const lastSaved = useRef("");
-  const currentFingerprint = useRef("");
+  const saver = useRef<DraftSaver | null>(null);
+  const currentTask = useRef<Task | null>(null);
   const fingerprint = task ? JSON.stringify(draftInput(task)) : "";
-  currentFingerprint.current = fingerprint;
+  currentTask.current = task;
 
   useEffect(() => {
     let cancelled = false;
@@ -80,11 +90,8 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
     loading
       .then((value) => {
         if (cancelled) return;
-        if (loadedTaskId.current !== value.id) {
-          loadedTaskId.current = value.id;
-          serverRevision.current = value.revision;
-        }
-        lastSaved.current = JSON.stringify(draftInput(value));
+        if (!saver.current || saver.current.saved.id !== value.id)
+          saver.current = new DraftSaver(value, gateway.save);
         // Preserve the in-progress draft during Fast Refresh, including unsaved text.
         setTask((current) => (current?.id === value.id ? current : value));
         if (!initialId) router.replace(`/tasks/${value.id}/edit`);
@@ -102,44 +109,40 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
     };
   }, [initialId, router]);
 
-  function saveSnapshot(snapshot: Task) {
-    const version = JSON.stringify(draftInput(snapshot));
+  function reportFailure(cause: unknown) {
+    if (cause instanceof SaveConflictError) {
+      conflictRef.current = true;
+      setConflict(true);
+    }
+    setError(
+      cause instanceof Error ? cause.message : "Не удалось сохранить задачу.",
+    );
+  }
+
+  async function saveSnapshot(snapshot: Task) {
+    if (conflictRef.current) throw new SaveConflictError();
     setSaveState("saving");
-    const job = saveQueue.current
-      .catch(() => undefined)
-      .then(() =>
-        gateway.save({ ...snapshot, revision: serverRevision.current }),
-      );
-    saveQueue.current = job;
-    return job
-      .then((saved) => {
-        serverRevision.current = saved.revision;
-        setTask((current) =>
-          current?.id === saved.id
-            ? { ...current, revision: saved.revision }
-            : current,
-        );
-        lastSaved.current = version;
-        if (currentFingerprint.current === version) setSaveState("saved");
-        return saved;
-      })
-      .catch((cause) => {
-        setSaveState("error");
-        throw cause;
-      });
+    try {
+      const saved = await saver.current!.save(snapshot);
+      if (currentTask.current && saver.current!.isSaved(currentTask.current))
+        setSaveState("saved");
+      return saved;
+    } catch (cause) {
+      setSaveState("error");
+      reportFailure(cause);
+      throw cause;
+    }
   }
 
   useEffect(() => {
-    if (!task || fingerprint === lastSaved.current) return;
+    if (!task || !saver.current || conflictRef.current) return;
+    if (saver.current.isSaved(task)) {
+      setSaveState("saved");
+      return;
+    }
     setSaveState("pending");
     saveTimer.current = setTimeout(() => {
-      void saveSnapshot(task).catch((cause) =>
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : "Не удалось сохранить задачу.",
-        ),
-      );
+      void saveSnapshot(task).catch(reportFailure);
     }, 650);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -183,11 +186,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
     try {
       await work();
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Не удалось выполнить действие. Попробуйте ещё раз.",
-      );
+      reportFailure(cause);
     } finally {
       setBusy("");
     }
@@ -205,6 +204,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
         setFallbackAction(null);
         update({
           questions: response.questions,
+          answers: answersForQuestions(task, response.questions),
           source: response.source,
           step: 2,
         });
@@ -230,13 +230,15 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
   }
   function useFallback() {
     if (!task) return;
-    if (fallbackAction === "questions")
+    if (fallbackAction === "questions") {
+      const questions = fallbackQuestions(task.rawText, task.draft);
       update({
-        questions: fallbackQuestions(task.rawText, task.draft),
+        questions,
+        answers: answersForQuestions(task, questions),
         step: 2,
         source: "fallback",
       });
-    else update({ draft: fallbackCard(task), step: 3, source: "fallback" });
+    } else update({ draft: fallbackCard(task), step: 3, source: "fallback" });
     setFallbackAction(null);
     setError("");
     setNotice(
@@ -255,9 +257,9 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
       return;
     }
     await action("Подтверждаем", async () => {
-      const flushed = await flush(task);
-      const saved = await gateway.confirm(flushed);
-      serverRevision.current = saved.revision;
+      const draft = await flush(task);
+      const saved = await gateway.confirm(draft);
+      saver.current!.saved = saved;
       setTask(saved);
       setAcknowledged(false);
       setNotice(
@@ -272,7 +274,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
     await action("Проверяем качество", async () => {
       const flushed = await flush(task);
       const reviewed = await gateway.review(flushed);
-      serverRevision.current = reviewed.revision;
+      saver.current!.saved = reviewed;
       setTask(reviewed);
       setAcknowledged(false);
       setNotice(reviewed.qualityReview?.source === "ai"
@@ -283,9 +285,9 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
   async function publish() {
     if (!task) return;
     await action("Публикуем", async () => {
-      const flushed = await flush(task);
-      const saved = await gateway.publish(flushed);
-      serverRevision.current = saved.revision;
+      const draft = await flush(task);
+      const saved = await gateway.publish(draft);
+      saver.current!.saved = saved;
       setTask(saved);
       setNotice(
         dataMode === "local"
@@ -309,6 +311,32 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
     });
   }
 
+  async function resolveConflict(copy: boolean) {
+    if (!task) return;
+    await action("Открываем задачу", async () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      await saver.current?.settled();
+      const saved = copy
+        ? await gateway.create({
+            ...newTask(crypto.randomUUID()),
+            ...draftInput(task),
+          })
+        : await gateway.get(task.id);
+      saver.current = new DraftSaver(saved, gateway.save);
+      conflictRef.current = false;
+      setConflict(false);
+      setSaveState("saved");
+      setTask(saved);
+      setAcknowledged(false);
+      setNotice(
+        copy
+          ? "Ваши правки сохранены отдельным черновиком. Исходная задача не изменена."
+          : "Открыта сохранённая версия задачи.",
+      );
+      if (copy) router.replace(`/tasks/${saved.id}/edit`);
+    });
+  }
+
   const dirty = task ? hasUnconfirmedChanges(task) : true;
   const qualityReview = task?.qualityReview?.inputKey === (task ? qualityInputKey(task.draft, task.industry) : "") ? task?.qualityReview : null;
   const score =
@@ -322,44 +350,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
 
   return (
     <>
-      <a href="#main" className="skip-link">
-        Перейти к содержимому
-      </a>
-      <header className="app-header">
-        <a
-          className="brand"
-          href="/"
-          onClick={(event) => {
-            event.preventDefault();
-            void navigate("/tasks/new");
-          }}
-          aria-label="SanaBrief — новая задача"
-        >
-          <img src="/icon.svg" alt="" width="36" height="36" />
-          <span>
-            Sana<span className="brand-light">Brief</span>
-          </span>
-        </a>
-        <div className="header-divider" />
-        <span className="header-context">Рабочее пространство бизнеса</span>
-        <div className="header-actions">
-          <span className={`mode-pill ${dataMode}`}>
-            <span />
-            {dataMode === "local" ? "Демо-режим" : "Серверный режим"}
-          </span>
-          <button
-            className="button text-button"
-            onClick={() => void showDrafts()}
-            disabled={readOnly || !task}
-          >
-            <FolderOpen size={17} />
-            Мои задачи
-          </button>
-          <span className="avatar" aria-label="Демопрофиль бизнеса">
-            Б
-          </span>
-        </div>
-      </header>
+      <SiteHeader onNavigate={navigate} disabled={readOnly} />
       <div className="app-shell">
         <nav className="sidebar" aria-label="Этапы создания задачи">
           <div className="sidebar-label">НОВАЯ ВОЗМОЖНОСТЬ</div>
@@ -370,6 +361,14 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
           <p className="sidebar-intro">
             Понятная задача — первый шаг к сильному решению.
           </p>
+          <button
+            className="button secondary compact builder-drafts-link"
+            onClick={() => void showDrafts()}
+            disabled={readOnly || !task}
+          >
+            <FolderOpen size={17} />
+            Мои задачи
+          </button>
           <ol className="steps">
             {steps.map((step, index) => {
               const number = index + 1;
@@ -435,7 +434,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
                   : "Сохраняем…"}
             </span>
           </div>
-          {error && (
+          {error && !conflict && (
             <div className="alert error" role="alert">
               <div>
                 <b>Не получилось завершить действие</b>
@@ -449,7 +448,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
                     Продолжить с шаблонными вопросами
                   </button>
                 )}
-                {saveState === "error" && task && (
+                {saveState === "error" && task && !conflict && (
                   <button
                     className="button secondary"
                     onClick={() =>
@@ -470,6 +469,33 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
               >
                 <X size={18} />
               </button>
+            </div>
+          )}
+          {conflict && (
+            <div className="alert error" role="alert">
+              <div>
+                <b>Правки в другой вкладке</b>
+                <p>
+                  Автосохранение остановлено, чтобы не перезаписать чужие
+                  изменения. Ваш текст остаётся здесь.
+                </p>
+                <div className="conflict-actions">
+                  <button
+                    className="button primary"
+                    disabled={readOnly}
+                    onClick={() => void resolveConflict(true)}
+                  >
+                    Сохранить мои правки копией
+                  </button>
+                  <button
+                    className="button secondary"
+                    disabled={readOnly}
+                    onClick={() => void resolveConflict(false)}
+                  >
+                    Отбросить мои правки и открыть сохранённое
+                  </button>
+                </div>
+              </div>
             </div>
           )}
           {notice && (
@@ -971,18 +997,18 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
                           ) : (
                             <button
                               className="button primary"
-                              onClick={() => setPreview("published")}
+                              onClick={() => void navigate(`/tasks/${task.id}`)}
                             >
                               <Eye size={17} />
-                              Посмотреть карточку
+                              Открыть в каталоге
                             </button>
                           )}
                         </div>
                         {dataMode === "local" && (
                           <p className="small-note">
                             Демо-режим: черновик и публикация сохраняются в этом
-                            браузере. Общий каталог будет доступен после
-                            подключения сервера.
+                            браузере. Каталог и отклики доступны здесь же; для
+                            работы с разных устройств подключите сервер.
                           </p>
                         )}
                       </section>
@@ -1034,6 +1060,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
           )}
         </main>
       </div>
+      <SiteFooter />
       {task && (
         <TaskPreview
           open={preview !== null}

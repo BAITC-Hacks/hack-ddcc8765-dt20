@@ -14,7 +14,36 @@ const STORAGE_KEY = "sana-brief.tasks.v1";
 export const dataMode =
   process.env.NEXT_PUBLIC_DATA_MODE === "api" ? "api" : "local";
 const base = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
-function readLocal(): Record<string, Task> {
+export class SaveConflictError extends Error {
+  constructor() {
+    super(
+      "Эта задача уже изменена в другой вкладке. Ваш текст остался в форме. Сохраните его отдельной копией или откройте сохранённую версию.",
+    );
+    this.name = "SaveConflictError";
+  }
+}
+export function withLocalLock<T>(work: () => T | Promise<T>): Promise<T> {
+  if (!navigator.locks)
+    return Promise.reject(
+      new Error(
+        "Для надёжного сохранения откройте приложение через HTTPS или localhost в современном браузере.",
+      ),
+    );
+  // One lock for the whole map also protects concurrent creation of different tasks.
+  return navigator.locks.request(STORAGE_KEY, work);
+}
+function nextUpdatedAt(current: Task): string {
+  return new Date(
+    Math.max(Date.now(), (Date.parse(current.updatedAt) || 0) + 1),
+  ).toISOString();
+}
+function currentVersion(task: Task): Task {
+  const current = readLocal()[task.id];
+  if (!current || current.updatedAt !== task.updatedAt)
+    throw new SaveConflictError();
+  return current;
+}
+export function readLocal(): Record<string, Task> {
   const value = window.localStorage.getItem(STORAGE_KEY);
   if (!value) return {};
   try {
@@ -25,7 +54,7 @@ function readLocal(): Record<string, Task> {
     );
   }
 }
-function writeLocal(task: Task): Task {
+export function writeLocal(task: Task): Task {
   const tasks = readLocal();
   tasks[task.id] = taskSchema.parse(task);
   try {
@@ -42,38 +71,39 @@ export function draftInput(task: Task): DraftInput {
   const { rawText, industry, draft, questions, answers, step, source } = task;
   return { rawText, industry, draft, questions, answers, step, source };
 }
-async function request<T>(
+export async function request<T>(
   path: string,
   schema: z.ZodType<T>,
   method = "GET",
   body?: unknown,
+  taskConflict = true,
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45000);
   try {
     const response = await fetch(`${base}${path}`, {
       method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers: {
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
       credentials: "include",
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
       cache: "no-store",
     });
-    if (!response.ok)
+    if (taskConflict && (response.status === 409 || response.status === 412))
+      throw new SaveConflictError();
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
       throw new Error(
-        response.status === 409
-          ? "Задача изменилась в другой вкладке. Скопируйте несохранённый текст и обновите страницу."
-          : response.status === 429
-            ? "Лимит AI-проверок исчерпан. Подождите минуту и повторите действие."
-          : response.status === 401
-            ? "Войдите в демонстрационный стенд и повторите действие."
-          : response.status === 503
-            ? "Сервис временно недоступен. Проверьте подключение сервера к базе и настройку демостенда."
+        typeof problem?.error === "string"
+          ? problem.error
           : response.status === 404
             ? "Сервер не нашёл данные или нужный обработчик. Проверьте подключение API."
             : "Сервер не сохранил изменения. Попробуйте ещё раз.",
       );
-    const parsed = schema.safeParse(await response.json());
+    }
+    const parsed = schema.safeParse(await response.json().catch(() => null));
     if (!parsed.success)
       throw new Error(
         "Сервер вернул некорректный ответ. Ваш текст сохранён в форме; повторите действие.",
@@ -97,7 +127,10 @@ async function request<T>(
 export const gateway = {
   async create(task: Task): Promise<Task> {
     return dataMode === "local"
-      ? writeLocal(task)
+      ? withLocalLock(() => {
+          if (readLocal()[task.id]) throw new SaveConflictError();
+          return writeLocal(task);
+        })
       : request("/api/tasks", taskSchema, "POST", {
           id: task.id,
           ...draftInput(task),
@@ -128,12 +161,22 @@ export const gateway = {
         "PATCH",
         { ...draftInput(task), expectedRevision: task.revision },
       );
-    const current = readLocal()[task.id] ?? task;
-    return writeLocal({
-      ...current,
-      ...draftInput(task),
-      qualityReview: current.qualityReview?.inputKey === qualityInputKey(task.draft, task.industry) ? current.qualityReview : null,
-      updatedAt: new Date().toISOString(),
+    return withLocalLock(() => {
+      const current = currentVersion(task);
+      if (
+        JSON.stringify(draftInput(current)) === JSON.stringify(draftInput(task))
+      )
+        return current;
+      return writeLocal({
+        ...current,
+        ...draftInput(task),
+        qualityReview:
+          current.qualityReview?.inputKey ===
+          qualityInputKey(task.draft, task.industry)
+            ? current.qualityReview
+            : null,
+        updatedAt: nextUpdatedAt(current),
+      });
     });
   },
   async questions(task: Task) {
@@ -160,9 +203,21 @@ export const gateway = {
     return { content: fallbackCard(task), source: "fallback" as const };
   },
   async review(task: Task): Promise<Task> {
-    if (dataMode === "api") return request(`/api/tasks/${encodeURIComponent(task.id)}/review`, taskSchema, "POST", { expectedRevision: task.revision });
-    const current = await this.get(task.id);
-    return writeLocal({ ...current, qualityReview: fallbackQualityReview(current.draft, current.industry) });
+    if (dataMode === "api")
+      return request(
+        `/api/tasks/${encodeURIComponent(task.id)}/review`,
+        taskSchema,
+        "POST",
+        { expectedRevision: task.revision },
+      );
+    return withLocalLock(() => {
+      const current = currentVersion(task);
+      return writeLocal({
+        ...current,
+        qualityReview: fallbackQualityReview(current.draft, current.industry),
+        updatedAt: nextUpdatedAt(current),
+      });
+    });
   },
   async confirm(task: Task): Promise<Task> {
     if (dataMode === "api")
@@ -172,8 +227,23 @@ export const gateway = {
         "POST",
         { acknowledged: true, expectedRevision: task.revision },
       );
-    const current = await this.get(task.id);
-    return writeLocal(confirmTask({ ...current, qualityReview: current.qualityReview ?? fallbackQualityReview(current.draft, current.industry) }, true));
+    return withLocalLock(() => {
+      const current = currentVersion(task);
+      return writeLocal({
+        ...confirmTask(
+          {
+            ...current,
+            qualityReview:
+              current.qualityReview?.inputKey ===
+              qualityInputKey(current.draft, current.industry)
+                ? current.qualityReview
+                : fallbackQualityReview(current.draft, current.industry),
+          },
+          true,
+        ),
+        updatedAt: nextUpdatedAt(current),
+      });
+    });
   },
   async publish(task: Task): Promise<Task> {
     if (dataMode === "api")
@@ -183,6 +253,12 @@ export const gateway = {
         "POST",
         { expectedRevision: task.revision },
       );
-    return writeLocal(publishTask(await this.get(task.id)));
+    return withLocalLock(() => {
+      const current = currentVersion(task);
+      return writeLocal({
+        ...publishTask(current),
+        updatedAt: nextUpdatedAt(current),
+      });
+    });
   },
 };

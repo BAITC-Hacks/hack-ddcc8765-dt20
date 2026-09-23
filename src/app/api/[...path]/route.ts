@@ -60,7 +60,16 @@ async function handle(request: Request) {
         })
         .parse(Object.fromEntries(url.searchParams));
       result = await service.catalog(filters);
-    } else if (method === "POST" && path.join("/") === "tasks")
+    } else if (method === "POST" && path.join("/") === "demo/seed") {
+      z.object({ acknowledged: z.literal(true) })
+        .strict()
+        .parse(await readJson(request));
+      result = await service.seedDemo();
+    } else if (method === "GET" && path.join("/") === "student/proposals")
+      result = await service.teamProposals(
+        z.uuid().parse(url.searchParams.get("teamId")),
+      );
+    else if (method === "POST" && path.join("/") === "tasks")
       result = await service.create(await readJson(request));
     else if (method === "GET" && path.join("/") === "teams")
       result = await service.teams();

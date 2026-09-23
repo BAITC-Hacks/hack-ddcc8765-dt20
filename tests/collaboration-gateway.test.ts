@@ -40,6 +40,7 @@ const ok = (data: unknown) =>
 
 beforeEach(() => {
   vi.resetModules();
+  vi.stubEnv("NEXT_PUBLIC_DATA_MODE", "api");
   vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
 });
 afterEach(() => {

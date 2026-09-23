@@ -6,6 +6,26 @@ import {
 } from "./contracts";
 import { meaningful } from "./scoring";
 
+export function answersForQuestions(
+  task: Pick<Task, "questions" | "answers">,
+  questions: Question[],
+): Task["answers"] {
+  return Object.fromEntries(
+    questions
+      .filter(
+        (q) =>
+          task.questions.some(
+            (old) =>
+              old.id === q.id &&
+              old.field === q.field &&
+              old.text === q.text &&
+              old.hint === q.hint,
+          ) && Object.hasOwn(task.answers, q.id),
+      )
+      .map((q) => [q.id, task.answers[q.id]]),
+  );
+}
+
 /** Deliberately deterministic fallback. Never presented as a model response. */
 export function fallbackQuestions(
   rawText: string,

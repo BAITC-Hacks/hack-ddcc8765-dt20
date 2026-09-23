@@ -1,4 +1,6 @@
 import { Check, ArrowUpRight, ShieldCheck, Info } from "lucide-react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { HelpContent } from "./help-content";
 import { LEVELS, type FieldKey, type Score } from "@/lib/contracts";
 import type { QualityReview } from "@/lib/quality-contracts";
 
@@ -31,7 +33,19 @@ export function ScorePanel({
     <aside className="score-column" aria-label="Рейтинг готовности">
       <div className="score-card">
         <div className="eyebrow">
-          ГОТОВНОСТЬ ЗАДАЧИ <Info size={15} aria-hidden />
+          ГОТОВНОСТЬ ЗАДАЧИ
+          <Dialog.Root>
+            <Dialog.Trigger asChild>
+              <button
+                className="icon-button score-help"
+                aria-label="Как считается готовность задачи"
+                title="Как считается готовность задачи"
+              >
+                <Info size={17} aria-hidden />
+              </button>
+            </Dialog.Trigger>
+            <HelpContent />
+          </Dialog.Root>
         </div>
         <div
           className="score-dial"

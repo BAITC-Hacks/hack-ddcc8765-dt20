@@ -30,16 +30,26 @@ describe("HTTP integration boundary", () => {
     expect(body).not.toHaveProperty("publishedAt");
     expect(body.expectedRevision).toBe(task.revision);
   });
+  it.each([409, 412])(
+    "surfaces version conflict %i without retrying over newer data",
+    async (status) => {
+      const fetchMock = vi.fn().mockResolvedValue(new Response("", { status }));
+      vi.stubGlobal("fetch", fetchMock);
+      const { gateway } = await import("../src/lib/gateway");
+      await expect(gateway.save(newTask("conflict"))).rejects.toMatchObject({
+        name: "SaveConflictError",
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
   it("rejects a malformed question response", async () => {
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(JSON.stringify({ questions: [], source: "ai" }), {
-            status: 200,
-          }),
-        ),
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ questions: [], source: "ai" }), {
+          status: 200,
+        }),
+      ),
     );
     const { gateway } = await import("../src/lib/gateway");
     await expect(gateway.questions(newTask("api"))).rejects.toThrow(

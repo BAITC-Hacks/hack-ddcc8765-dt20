@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SanaBrief — конструктор бизнес-задач",
+  title: "SanaBrief — задачи бизнеса и команды",
   description:
     "Превратите идею в понятную задачу для студенческой команды AI Sana.",
   icons: { icon: "/icon.svg" },
@@ -11,7 +11,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ru">
+    <html lang="ru" data-scroll-behavior="smooth">
       <body>{children}</body>
     </html>
   );
