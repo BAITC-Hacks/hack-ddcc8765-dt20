@@ -35,7 +35,7 @@ export function ScorePanel({
                 <Info size={17} aria-hidden />
               </button>
             </Dialog.Trigger>
-            <HelpContent rating />
+            <HelpContent />
           </Dialog.Root>
         </div>
         <div
