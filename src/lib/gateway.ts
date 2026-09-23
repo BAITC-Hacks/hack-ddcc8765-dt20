@@ -13,6 +13,35 @@ const STORAGE_KEY = "sana-brief.tasks.v1";
 export const dataMode =
   process.env.NEXT_PUBLIC_DATA_MODE === "api" ? "api" : "local";
 const base = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
+export class SaveConflictError extends Error {
+  constructor() {
+    super(
+      "Эта задача уже изменена в другой вкладке. Ваш текст остался в форме. Сохраните его отдельной копией или откройте сохранённую версию.",
+    );
+    this.name = "SaveConflictError";
+  }
+}
+function withLocalLock<T>(work: () => T): Promise<T> {
+  if (!navigator.locks)
+    return Promise.reject(
+      new Error(
+        "Для надёжного сохранения откройте приложение через HTTPS или localhost в современном браузере.",
+      ),
+    );
+  // One lock for the whole map also protects concurrent creation of different tasks.
+  return navigator.locks.request(STORAGE_KEY, work);
+}
+function nextUpdatedAt(current: Task): string {
+  return new Date(
+    Math.max(Date.now(), (Date.parse(current.updatedAt) || 0) + 1),
+  ).toISOString();
+}
+function currentVersion(task: Task): Task {
+  const current = readLocal()[task.id];
+  if (!current || current.updatedAt !== task.updatedAt)
+    throw new SaveConflictError();
+  return current;
+}
 function readLocal(): Record<string, Task> {
   const value = window.localStorage.getItem(STORAGE_KEY);
   if (!value) return {};
@@ -46,18 +75,26 @@ async function request<T>(
   schema: z.ZodType<T>,
   method = "GET",
   body?: unknown,
+  expectedVersion?: string,
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   try {
     const response = await fetch(`${base}${path}`, {
       method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers: {
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...(expectedVersion
+          ? { "If-Match": JSON.stringify(expectedVersion) }
+          : {}),
+      },
       credentials: "include",
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
       cache: "no-store",
     });
+    if (response.status === 409 || response.status === 412)
+      throw new SaveConflictError();
     if (!response.ok)
       throw new Error(
         response.status === 404
@@ -88,7 +125,10 @@ async function request<T>(
 export const gateway = {
   async create(task: Task): Promise<Task> {
     return dataMode === "local"
-      ? writeLocal(task)
+      ? withLocalLock(() => {
+          if (readLocal()[task.id]) throw new SaveConflictError();
+          return writeLocal(task);
+        })
       : request("/api/tasks", taskSchema, "POST", {
           id: task.id,
           ...draftInput(task),
@@ -118,12 +158,19 @@ export const gateway = {
         taskSchema,
         "PATCH",
         draftInput(task),
+        task.updatedAt,
       );
-    const current = readLocal()[task.id] ?? task;
-    return writeLocal({
-      ...current,
-      ...draftInput(task),
-      updatedAt: new Date().toISOString(),
+    return withLocalLock(() => {
+      const current = currentVersion(task);
+      if (
+        JSON.stringify(draftInput(current)) === JSON.stringify(draftInput(task))
+      )
+        return current;
+      return writeLocal({
+        ...current,
+        ...draftInput(task),
+        updatedAt: nextUpdatedAt(current),
+      });
     });
   },
   async questions(task: Task) {
@@ -156,8 +203,15 @@ export const gateway = {
         taskSchema,
         "POST",
         { acknowledged: true },
+        task.updatedAt,
       );
-    return writeLocal(confirmTask(await this.get(task.id), true));
+    return withLocalLock(() => {
+      const current = currentVersion(task);
+      return writeLocal({
+        ...confirmTask(current, true),
+        updatedAt: nextUpdatedAt(current),
+      });
+    });
   },
   async publish(task: Task): Promise<Task> {
     if (dataMode === "api")
@@ -166,7 +220,14 @@ export const gateway = {
         taskSchema,
         "POST",
         {},
+        task.updatedAt,
       );
-    return writeLocal(publishTask(await this.get(task.id)));
+    return withLocalLock(() => {
+      const current = currentVersion(task);
+      return writeLocal({
+        ...publishTask(current),
+        updatedAt: nextUpdatedAt(current),
+      });
+    });
   },
 };

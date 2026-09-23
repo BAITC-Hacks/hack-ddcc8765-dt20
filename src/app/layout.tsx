@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { FloatingHelp } from "@/components/builder/floating-help";
 
 export const metadata: Metadata = {
   title: "SanaBrief — конструктор бизнес-задач",
@@ -11,8 +12,11 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ru">
-      <body>{children}</body>
+    <html lang="ru" data-scroll-behavior="smooth">
+      <body>
+        {children}
+        <FloatingHelp />
+      </body>
     </html>
   );
 }

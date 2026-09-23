@@ -12,7 +12,11 @@ import {
   hasUnconfirmedChanges,
   publishTask,
 } from "../src/lib/task-state";
-import { fallbackCard, fallbackQuestions } from "../src/lib/assistance";
+import {
+  answersForQuestions,
+  fallbackCard,
+  fallbackQuestions,
+} from "../src/lib/assistance";
 
 describe("business task readiness", () => {
   it("does not award points for empty fields or placeholders", () => {
@@ -120,6 +124,31 @@ describe("confirmation and publication", () => {
 });
 
 describe("AI fallback and response validation", () => {
+  it("retains answers only for unchanged questions, never reused IDs", () => {
+    const task = newTask("regenerate");
+    task.questions = [
+      { id: "q1", field: "users", text: "Кто пользователь?" },
+      { id: "q2", field: "need", text: "Что изменить?" },
+      { id: "q3", field: "dataDescription", text: "Какие данные?" },
+      { id: "old", field: "feedback", text: "Как отвечаете?" },
+    ];
+    task.answers = {
+      q1: "Администратор",
+      q2: "Ускорить обработку",
+      q3: "Заказы",
+      old: "За день",
+    };
+    const next = [
+      { id: "q1", field: "deadline" as const, text: "К какому сроку?" },
+      task.questions[1],
+      { ...task.questions[2], text: "Какие учебные материалы?" },
+    ];
+    const answers = answersForQuestions(task, next);
+    expect(answers).toEqual({ q2: "Ускорить обработку" });
+    expect(fallbackCard({ ...task, questions: next, answers }).deadline).toBe(
+      "",
+    );
+  });
   it("asks at least three unique, relevant questions", () => {
     const questions = fallbackQuestions(
       "Хотим ускорить обработку заказов",

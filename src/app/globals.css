@@ -1074,6 +1074,101 @@ input[type="checkbox"] {
 .icon-button:hover {
   background: #e9edf4;
 }
+.score-help {
+  min-width: 32px;
+  min-height: 32px;
+  margin: -8px -6px -8px 0;
+  color: #677d9c;
+}
+.floating-help {
+  position: fixed;
+  width: 52px;
+  height: 52px;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--blue);
+  color: white;
+  border: 2px solid white;
+  box-shadow: 0 4px 18px #2449c942;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.floating-help:hover {
+  background: var(--blue-dark);
+}
+.floating-help.dragging {
+  cursor: grabbing;
+}
+.help-dialog {
+  max-width: 610px;
+}
+.help-dialog .preview-top h2 {
+  font-size: 22px;
+  line-height: 1.35;
+}
+.help-section {
+  margin: 24px 0;
+}
+.help-section h3 {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+.help-section p,
+.help-section li {
+  font-size: 14px;
+  color: #52647e;
+}
+.help-section p + p {
+  margin-top: 10px;
+}
+.help-section ul,
+.help-section ol {
+  margin: 12px 0;
+  padding-left: 22px;
+}
+.help-section ul {
+  list-style: disc;
+}
+.help-section ol {
+  list-style: decimal;
+}
+.help-section li {
+  margin: 7px 0;
+}
+.help-section .button {
+  margin-top: 14px;
+  white-space: normal;
+}
+.help-weights {
+  margin: 16px 0;
+  background: var(--canvas);
+  border-radius: 10px;
+  padding: 10px 16px;
+}
+.help-weights > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+.help-weights dd {
+  margin: 0;
+  font-weight: 700;
+  color: var(--blue);
+  white-space: nowrap;
+}
+.conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.conflict-actions .button {
+  white-space: normal;
+}
 .loading-panel {
   min-height: 380px;
   display: flex;
