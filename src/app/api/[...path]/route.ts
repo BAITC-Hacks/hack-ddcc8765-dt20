@@ -121,9 +121,6 @@ async function handle(request: Request) {
               "INTERNAL_ERROR",
               "Не удалось выполнить операцию.",
             );
-    if (api.status === 401)
-      headers["WWW-Authenticate"] =
-        'Basic realm="SanaBrief demo", charset="UTF-8"';
     if (api.status === 429) headers["Retry-After"] = "60";
     return Response.json(
       { error: api.message, code: api.code },

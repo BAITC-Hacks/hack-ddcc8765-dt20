@@ -156,15 +156,18 @@ it("routes seed, public catalog, proposals, manual decisions, results and XP thr
   expect((await http("/api/student/proposals?teamId=broken")).status).toBe(400);
 });
 
-it("does not seed without acknowledgement and does not bypass demo access for new routes", async () => {
+it("requires seed acknowledgement but allows production requests without login", async () => {
   expect((await http("/api/demo/seed", "POST", {})).status).toBe(400);
   expect(await state.repo.listTasks()).toHaveLength(0);
   vi.stubEnv("NODE_ENV", "production");
-  expect(
-    (await http("/api/demo/seed", "POST", { acknowledged: true })).status,
-  ).toBe(503);
+  const seeded = await http("/api/demo/seed", "POST", { acknowledged: true });
+  expect(seeded.status).toBe(200);
+  expect(seeded.headers.has("www-authenticate")).toBe(false);
   vi.stubEnv("DEMO_ACCESS_PASSWORD", "test-password");
-  expect(
-    (await http(`/api/student/proposals?teamId=${DEMO_TEAMS[0].id}`)).status,
-  ).toBe(401);
+  const proposals = await http(`/api/student/proposals?teamId=${DEMO_TEAMS[0].id}`);
+  expect(proposals.status).toBe(200);
+  expect(proposals.headers.has("www-authenticate")).toBe(false);
+  const health = await http("/api/health");
+  expect(health.status).toBe(200);
+  expect(health.headers.has("www-authenticate")).toBe(false);
 });

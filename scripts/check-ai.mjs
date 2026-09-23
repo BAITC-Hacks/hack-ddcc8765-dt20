@@ -14,7 +14,6 @@ const base = (env.CHECK_BASE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
 
 async function request(path, body) {
   const headers = { "Content-Type": "application/json" };
-  if (env.DEMO_ACCESS_PASSWORD) headers.Authorization = "Basic " + Buffer.from(`demo:${env.DEMO_ACCESS_PASSWORD}`).toString("base64");
   const response = await fetch(base + path, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
   assert.equal(response.status, 200, `${path}: HTTP ${response.status}`);
   return response.json();

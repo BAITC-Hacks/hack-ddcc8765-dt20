@@ -1,26 +1,7 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import { ApiError } from "./service";
 
-/** Shared demo access only; this is not per-user authentication. */
+/** The shared demo is open; reject writes from unrelated websites. */
 export function guardRequest(request: Request) {
-  const password = process.env.DEMO_ACCESS_PASSWORD;
-  if (process.env.NODE_ENV === "production" && !password)
-    throw new ApiError(
-      503,
-      "DEMO_ACCESS_NOT_CONFIGURED",
-      "Для демостенда настройте DEMO_ACCESS_PASSWORD.",
-    );
-  if (password) {
-    const auth = request.headers.get("authorization") ?? "";
-    const decoded = auth.startsWith("Basic ")
-      ? Buffer.from(auth.slice(6), "base64").toString("utf8")
-      : "";
-    const colon = decoded.indexOf(":");
-    const supplied = colon >= 0 ? decoded.slice(colon + 1) : "";
-    const hash = (value: string) => createHash("sha256").update(value).digest();
-    if (!timingSafeEqual(hash(password), hash(supplied)))
-      throw new ApiError(401, "AUTH_REQUIRED", "Войдите в демостенд.");
-  }
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
     const origin = request.headers.get("origin");
     const target = new URL(request.url);

@@ -13,7 +13,6 @@ const db = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, { auth: { per
 
 async function request(path, method = "GET", body, expectedStatus = 200) {
   const headers = { "Content-Type": "application/json" };
-  if (env.DEMO_ACCESS_PASSWORD) headers.Authorization = "Basic " + Buffer.from(`demo:${env.DEMO_ACCESS_PASSWORD}`).toString("base64");
   const response = await fetch(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(60000) });
   assert.equal(response.status, expectedStatus, `${method} ${path}: HTTP ${response.status}, expected ${expectedStatus}`);
   return response.json();

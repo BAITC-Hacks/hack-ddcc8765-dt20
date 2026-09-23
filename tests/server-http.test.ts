@@ -2,26 +2,26 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { guardRequest, readJson } from "../src/lib/server/http";
 afterEach(() => vi.unstubAllEnvs());
 describe("demo HTTP boundary", () => {
-  it("blocks production access when a demo password is not configured", () => {
+  it("allows production access without credentials", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("DEMO_ACCESS_PASSWORD", "");
     expect(() =>
       guardRequest(new Request("https://demo.example/api/tasks")),
-    ).toThrow();
+    ).not.toThrow();
   });
-  it("requires the correct configured password", () => {
+  it("ignores a legacy demo password and cached browser credentials", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("DEMO_ACCESS_PASSWORD", "a-long-demo-password");
     expect(() =>
       guardRequest(new Request("https://demo.example/api/tasks")),
-    ).toThrow();
+    ).not.toThrow();
     expect(() =>
       guardRequest(
         new Request("https://demo.example/api/tasks", {
           headers: {
             authorization:
               "Basic " +
-              Buffer.from("demo:a-long-demo-password").toString("base64"),
+              Buffer.from("demo:obsolete-password").toString("base64"),
           },
         }),
       ),
