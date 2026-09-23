@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { newTask, type Task } from "../src/lib/contracts";
 import { draftInput } from "../src/lib/gateway";
+import { fallbackQualityReview } from "../src/lib/quality";
 import {
   TaskService,
   type Repository,
@@ -105,6 +106,47 @@ beforeEach(() => {
 });
 
 describe("server task lifecycle", () => {
+  it("reviews once, confirms server-reviewed points and preserves the review across metadata saves", async () => {
+    let calls = 0;
+    service = new TaskService(repo, "business-1", async (content, industry) => {
+      calls++;
+      const review = fallbackQualityReview(content, industry);
+      review.source = "ai";
+      review.fields = review.fields.map(item => item.field === "users" ? { ...item, accepted: false, reason: "Не названа роль пользователя", suggestion: "Укажите роль" } : item);
+      return review;
+    });
+    const created = await create();
+    const saved = await service.save(taskId, { ...editable(created), draft: { ...created.draft, users: "Какие-то люди" } });
+    const reviewed = await service.review(taskId, { expectedRevision: saved.revision });
+    expect(reviewed.qualityReview?.source).toBe("ai");
+    expect(reviewed.confirmedScore).toBeNull();
+    const metadata = await service.save(taskId, { ...editable(reviewed), step: 3 });
+    expect(metadata.qualityReview).toEqual(reviewed.qualityReview);
+    const confirmed = await confirmCurrent();
+    expect(confirmed.confirmedScore?.total).toBe(0);
+    expect(calls).toBe(1);
+  });
+  it("invalidates quality review after content edits without changing published points", async () => {
+    const published = await publish();
+    expect(published.qualityReview).toBeTruthy();
+    const saved = await service.save(taskId, { ...editable(published), draft: { ...published.draft, users: "Администраторы" } });
+    expect(saved.qualityReview).toBeNull();
+    expect((await service.catalog({}))[0].confirmedScore.total).toBe(0);
+    expect((await confirmCurrent()).confirmedScore?.total).toBe(10);
+  });
+  it("rejects a review if another tab edits during AI work", async () => {
+    const created = await create();
+    service = new TaskService(repo, "business-1", async (content, industry) => {
+      await service.save(taskId, { ...editable(created), rawText: "Изменения другой вкладки" });
+      return fallbackQualityReview(content, industry);
+    });
+    await expect(service.review(taskId, { expectedRevision: created.revision })).rejects.toMatchObject({ status: 409 });
+    expect((await service.get(taskId)).qualityReview).toBeFalsy();
+  });
+  it("does not accept a client-authored quality report", async () => {
+    const created = await create();
+    await expect(service.save(taskId, { ...editable(created), qualityReview: fallbackQualityReview(created.draft, created.industry) })).rejects.toThrow();
+  });
   it("does not confirm a draft changed since the user reviewed it", async () => {
     const reviewed = await create();
     await service.save(taskId, { ...editable(reviewed), rawText: "Правки другой вкладки" });

@@ -1,5 +1,6 @@
 import { Check, ArrowUpRight, ShieldCheck, Info } from "lucide-react";
 import { LEVELS, type FieldKey, type Score } from "@/lib/contracts";
+import type { QualityReview } from "@/lib/quality-contracts";
 
 export function ScorePanel({
   score,
@@ -7,12 +8,20 @@ export function ScorePanel({
   dirty,
   editable,
   onImprove,
+  qualityReview,
+  onReview,
+  reviewDisabled,
+  localMode,
 }: {
   score: Score;
   confirmed: Score | null;
   dirty: boolean;
   editable: boolean;
   onImprove: (field: FieldKey) => void;
+  qualityReview: QualityReview | null;
+  onReview: () => void;
+  reviewDisabled: boolean;
+  localMode: boolean;
 }) {
   const missing = score.groups
     .flatMap((group) => group.missing)
@@ -70,11 +79,22 @@ export function ScorePanel({
             </div>
           ))}
         </div>
+        {editable && (
+          <div className="quality-summary">
+            <p>{qualityReview?.source === "ai"
+              ? "Содержание проверено ИИ. Баллы рассчитаны по фиксированным правилам."
+              : qualityReview ? "Резервная проверка по правилам. Смысловая оценка ИИ не выполнена."
+              : "Пока учтено заполнение полей. Проверьте содержание перед подтверждением."}</p>
+            <button className="button secondary" onClick={onReview} disabled={reviewDisabled}>
+              {localMode ? "Проверить качество" : "Проверить качество с ИИ"}
+            </button>
+          </div>
+        )}
         <details className="rating-rules">
           <summary>Как устроен рейтинг</summary>
           <p>
             Баллы начисляются за заполненные и подтверждённые поля. Оценка
-            показывает полноту сведений, а не экспертизу бизнеса.
+            учитывает содержательность ответа после проверки. ИИ не меняет веса показателей.
           </p>
           <ul>
             {Object.values(LEVELS).map((level) => (

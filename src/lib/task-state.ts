@@ -1,11 +1,21 @@
 import { contentSchema, type Task } from "./contracts";
 import { calculateScore, meaningful } from "./scoring";
+import { calculateReviewedScore, qualityInputKey } from "./quality";
 
 export function hasUnconfirmedChanges(task: Task): boolean {
+  const reviewed = task.qualityReview?.inputKey === qualityInputKey(task.draft, task.industry)
+    ? calculateReviewedScore(task.draft, task.qualityReview) : null;
+  const reviewChanged = reviewed !== null && reviewed.groups.some(group => {
+    const confirmed = task.confirmedScore?.groups.find(item => item.id === group.id);
+    return !confirmed || confirmed.earned !== group.earned ||
+      confirmed.missing.length !== group.missing.length ||
+      group.missing.some(item => !confirmed.missing.some(other => other.field === item.field && other.label === item.label && other.points === item.points));
+  });
   return (
     !task.confirmedContent ||
     JSON.stringify(task.draft) !== JSON.stringify(task.confirmedContent) ||
-    task.industry !== task.confirmedIndustry
+    task.industry !== task.confirmedIndustry ||
+    reviewChanged
   );
 }
 export function confirmTask(task: Task, acknowledged: boolean): Task {
@@ -19,7 +29,8 @@ export function confirmTask(task: Task, acknowledged: boolean): Task {
     confirmedContent: { ...draft },
     confirmedIndustry: task.industry,
     confirmedAt: new Date().toISOString(),
-    confirmedScore: calculateScore(draft),
+    confirmedScore: task.qualityReview?.inputKey === qualityInputKey(draft, task.industry)
+      ? calculateReviewedScore(draft, task.qualityReview) : calculateScore(draft),
     updatedAt: new Date().toISOString(),
   };
 }

@@ -28,7 +28,13 @@ export function guardRequest(request: Request) {
     // browser's destination, including the development port.
     const host = request.headers.get("host");
     if (host) target.host = host;
-    if (origin && origin !== target.origin)
+    // A tunnel terminates HTTPS before forwarding to the local HTTP server.
+    // Trust only the explicitly configured public origin, not forwarded headers.
+    const configuredOrigin = process.env.APP_ORIGIN?.trim();
+    const publicOrigin = configuredOrigin
+      ? new URL(configuredOrigin).origin
+      : undefined;
+    if (origin && origin !== target.origin && origin !== publicOrigin)
       throw new ApiError(
         403,
         "ORIGIN_REJECTED",

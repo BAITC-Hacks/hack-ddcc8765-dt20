@@ -8,6 +8,7 @@ import {
   taskSchema,
 } from "../contracts";
 import { fallbackCard, fallbackQuestions } from "../assistance";
+import { aiDiagnostic, providerCategory, type AiKind } from "./ai-diagnostics";
 
 export const questionsInput = z
   .object({
@@ -21,22 +22,48 @@ export const cardInput = questionsInput.extend({
   answers: taskSchema.shape.answers,
 });
 export type ModelProvider = (
-  kind: "questions" | "card",
+  kind: AiKind,
   input: unknown,
 ) => Promise<unknown>;
 
-async function tryModel<T>(
-  kind: "questions" | "card",
+const ATTEMPT_TIMEOUT_MS = 18_000;
+
+function withTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(Object.assign(new Error(), { name: "TimeoutError" })), ATTEMPT_TIMEOUT_MS);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+export async function tryModel<T>(
+  kind: AiKind,
   input: unknown,
   provider: ModelProvider | undefined,
   validate: (value: unknown) => T,
 ): Promise<T | null> {
-  if (!provider) return null;
+  if (!provider) {
+    aiDiagnostic("ai_fallback", kind, "configuration", "fallback", 0);
+    return null;
+  }
   for (let attempt = 0; attempt < 2; attempt++) {
+    const started = Date.now();
+    let result: unknown;
     try {
-      return validate(await provider(kind, input));
+      result = await withTimeout(Promise.resolve().then(() => provider(kind, input)));
+    } catch (error) {
+      const category = providerCategory(error);
+      aiDiagnostic("ai_attempt", kind, category, "failure", Date.now() - started);
+      if (attempt === 1) aiDiagnostic("ai_fallback", kind, category, "fallback", Date.now() - started);
+      continue;
+    }
+    try {
+      return validate(result);
     } catch {
-      /* Never expose provider messages, secrets or raw prompts. */
+      aiDiagnostic("ai_attempt", kind, "schema", "failure", Date.now() - started);
+      if (attempt === 1) aiDiagnostic("ai_fallback", kind, "schema", "fallback", Date.now() - started);
     }
   }
   return null;
@@ -80,10 +107,15 @@ export async function assistCard(
       ...Object.values(input.content),
       ...Object.values(input.answers),
     ];
+    const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
     for (const key of FIELD_KEYS) {
       if (!parsed.content[key].trim()) continue;
       const quote = raw.evidence[key]?.trim();
-      if (!quote || !sources.some((source) => source.includes(quote)))
+      if (
+        !quote ||
+        !normalize(quote).includes(normalize(parsed.content[key])) ||
+        !sources.some((source) => normalize(source).includes(normalize(quote)))
+      )
         throw new Error("Unsupported evidence");
     }
     return { ...parsed, evidence: raw.evidence };

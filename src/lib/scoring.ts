@@ -8,11 +8,18 @@ type Rule = {
 };
 export const meaningful = (value: string) => {
   const text = value
+    .normalize("NFKC")
     .trim()
     .toLocaleLowerCase("ru")
-    .replace(/[.!?]+$/, "");
+    .replace(/[.!?…]+$/, "")
+    .trim();
+  const characters = text.match(/[\p{L}\p{N}]/gu) ?? [];
+  const words = text.split(/\s+/);
   return (
-    /[\p{L}\p{N}]/u.test(text) &&
+    characters.length >= 2 &&
+    !/^(.)\1{2,}$/u.test(characters.join("")) &&
+    !/^\d+$/.test(text) &&
+    !(words.length >= 3 && new Set(words).size === 1) &&
     ![
       "не знаю",
       "потом",
@@ -20,6 +27,20 @@ export const meaningful = (value: string) => {
       "уточним позже",
       "нет",
       "не указано",
+      "без понятия",
+      "не знаю пока",
+      "не знаю что написать",
+      "неизвестно",
+      "нет информации",
+      "не определено",
+      "что угодно",
+      "все",
+      "всё",
+      "тест",
+      "test",
+      "lorem ipsum",
+      "asdf",
+      "qwerty",
       "tbd",
       "n/a",
       "-",
@@ -138,9 +159,13 @@ export function readiness(total: number): Score["level"] {
 export function calculateScore(content: TaskContent): Score {
   const breakdown = groups.map((group) => {
     const missing = group.rules.filter(
-      (rule) =>
-        !meaningful(content[rule.field]) ||
-        (rule.check && !rule.check(content[rule.field])),
+      (rule) => {
+        const value = content[rule.field];
+        if (rule.check) return !rule.check(value);
+        if (rule.field === "successTarget" && /^[<>≤≥]?\s*\d+(?:[.,]\d+)?\s*%?$/.test(value.trim()))
+          return !meaningful(content.successMetric);
+        return !meaningful(value);
+      },
     );
     const max = group.rules.reduce((sum, rule) => sum + rule.points, 0);
     return {

@@ -26,6 +26,7 @@ import {
 import { INDUSTRIES, newTask, type Task } from "@/lib/contracts";
 import { dataMode, draftInput, gateway } from "@/lib/gateway";
 import { calculateScore, meaningful, validContact } from "@/lib/scoring";
+import { calculateReviewedScore, qualityInputKey } from "@/lib/quality";
 import { hasUnconfirmedChanges } from "@/lib/task-state";
 import { fallbackCard, fallbackQuestions } from "@/lib/assistance";
 import { FIELD_LIMITS, FIELD_SECTIONS } from "@/lib/fields";
@@ -266,6 +267,19 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
       );
     });
   }
+  async function reviewQuality() {
+    if (!task) return;
+    await action("Проверяем качество", async () => {
+      const flushed = await flush(task);
+      const reviewed = await gateway.review(flushed);
+      serverRevision.current = reviewed.revision;
+      setTask(reviewed);
+      setAcknowledged(false);
+      setNotice(reviewed.qualityReview?.source === "ai"
+        ? "ИИ проверил содержание полей. Изучите замечания и подтвердите карточку, чтобы закрепить рейтинг."
+        : "Выполнена резервная проверка по правилам. Смысловая AI-проверка сейчас недоступна.");
+    });
+  }
   async function publish() {
     if (!task) return;
     await action("Публикуем", async () => {
@@ -296,9 +310,11 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
   }
 
   const dirty = task ? hasUnconfirmedChanges(task) : true;
+  const qualityReview = task?.qualityReview?.inputKey === (task ? qualityInputKey(task.draft, task.industry) : "") ? task?.qualityReview : null;
   const score =
     !dirty && task?.confirmedScore
       ? task.confirmedScore
+      : qualityReview && task ? calculateReviewedScore(task.draft, qualityReview)
       : calculateScore(task?.draft ?? newTask("preview").draft);
   const readOnly = Boolean(busy);
   const answered =
@@ -786,6 +802,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
                             </div>
                           )}
                           {section.fields.map((field) => {
+                            const qualityIssue = qualityReview?.fields.find(item => item.field === field.key && !item.accepted);
                             const contactInvalid =
                               field.key === "contact" &&
                               Boolean(task.draft.contact.trim()) &&
@@ -803,7 +820,7 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
                                     )}
                                   </label>
                                   {meaningful(task.draft[field.key]) &&
-                                    !contactInvalid && (
+                                    !contactInvalid && !qualityIssue && (
                                       <Check
                                         size={15}
                                         className="field-check"
@@ -853,6 +870,11 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
                                       })
                                     }
                                   />
+                                )}
+                                {qualityIssue && task.draft[field.key].trim() && (
+                                  <p className="quality-feedback">
+                                    <strong>{qualityIssue.reason}</strong>{" "}{qualityIssue.suggestion}
+                                  </p>
                                 )}
                                 {contactInvalid && (
                                   <p className="field-error" id="contact-error">
@@ -994,6 +1016,10 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
                   confirmed={task.confirmedScore}
                   dirty={dirty}
                   editable={task.step === 3}
+                  qualityReview={qualityReview ?? null}
+                  onReview={() => void reviewQuality()}
+                  reviewDisabled={readOnly}
+                  localMode={dataMode === "local"}
                   onImprove={(field) => {
                     document
                       .getElementById(`field-${field}`)

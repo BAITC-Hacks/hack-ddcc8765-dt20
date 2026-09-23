@@ -8,6 +8,7 @@ import {
 } from "./contracts";
 import { fallbackCard, fallbackQuestions } from "./assistance";
 import { confirmTask, publishTask } from "./task-state";
+import { fallbackQualityReview, qualityInputKey } from "./quality";
 
 const STORAGE_KEY = "sana-brief.tasks.v1";
 export const dataMode =
@@ -48,7 +49,7 @@ async function request<T>(
   body?: unknown,
 ): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20000);
+  const timer = setTimeout(() => controller.abort(), 45000);
   try {
     const response = await fetch(`${base}${path}`, {
       method,
@@ -62,6 +63,12 @@ async function request<T>(
       throw new Error(
         response.status === 409
           ? "Задача изменилась в другой вкладке. Скопируйте несохранённый текст и обновите страницу."
+          : response.status === 429
+            ? "Лимит AI-проверок исчерпан. Подождите минуту и повторите действие."
+          : response.status === 401
+            ? "Войдите в демонстрационный стенд и повторите действие."
+          : response.status === 503
+            ? "Сервис временно недоступен. Проверьте подключение сервера к базе и настройку демостенда."
           : response.status === 404
             ? "Сервер не нашёл данные или нужный обработчик. Проверьте подключение API."
             : "Сервер не сохранил изменения. Попробуйте ещё раз.",
@@ -75,7 +82,7 @@ async function request<T>(
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError")
       throw new Error(
-        "Сервер не ответил за 20 секунд. Повторите действие — введённые данные остались в форме.",
+        "Сервер не ответил за 45 секунд. Повторите действие — введённые данные остались в форме.",
       );
     if (error instanceof TypeError)
       throw new Error(
@@ -125,6 +132,7 @@ export const gateway = {
     return writeLocal({
       ...current,
       ...draftInput(task),
+      qualityReview: current.qualityReview?.inputKey === qualityInputKey(task.draft, task.industry) ? current.qualityReview : null,
       updatedAt: new Date().toISOString(),
     });
   },
@@ -151,6 +159,11 @@ export const gateway = {
       });
     return { content: fallbackCard(task), source: "fallback" as const };
   },
+  async review(task: Task): Promise<Task> {
+    if (dataMode === "api") return request(`/api/tasks/${encodeURIComponent(task.id)}/review`, taskSchema, "POST", { expectedRevision: task.revision });
+    const current = await this.get(task.id);
+    return writeLocal({ ...current, qualityReview: fallbackQualityReview(current.draft, current.industry) });
+  },
   async confirm(task: Task): Promise<Task> {
     if (dataMode === "api")
       return request(
@@ -159,7 +172,8 @@ export const gateway = {
         "POST",
         { acknowledged: true, expectedRevision: task.revision },
       );
-    return writeLocal(confirmTask(await this.get(task.id), true));
+    const current = await this.get(task.id);
+    return writeLocal(confirmTask({ ...current, qualityReview: current.qualityReview ?? fallbackQualityReview(current.draft, current.industry) }, true));
   },
   async publish(task: Task): Promise<Task> {
     if (dataMode === "api")

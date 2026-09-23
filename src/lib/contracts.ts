@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { qualityReviewSchema } from "./quality-contracts";
 
 export const FIELD_KEYS = [
   "title",
@@ -130,6 +131,7 @@ export const taskSchema = z.object({
   confirmedAt: z.string().nullable(),
   publishedAt: z.string().nullable(),
   confirmedScore: scoreSchema.nullable(),
+  qualityReview: qualityReviewSchema.nullable().optional(),
   step: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   source: z.enum(["ai", "fallback"]),
   updatedAt: z.string(),

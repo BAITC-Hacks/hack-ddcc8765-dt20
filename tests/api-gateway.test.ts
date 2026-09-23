@@ -77,9 +77,9 @@ describe("HTTP integration boundary", () => {
     );
     const { gateway } = await import("../src/lib/gateway");
     const response = expect(gateway.questions(newTask("slow"))).rejects.toThrow(
-      "20 секунд",
+      "45 секунд",
     );
-    await vi.advanceTimersByTimeAsync(20000);
+    await vi.advanceTimersByTimeAsync(45000);
     await response;
   });
 });

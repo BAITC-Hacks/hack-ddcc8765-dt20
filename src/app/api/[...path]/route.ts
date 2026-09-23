@@ -8,6 +8,8 @@ import {
   cardInput,
 } from "@/lib/server/ai";
 import { modelProvider } from "@/lib/server/model";
+import { reviewQuality } from "@/lib/server/quality";
+import { contentSchema } from "@/lib/contracts";
 import { guardRequest, guardAiRate, readJson } from "@/lib/server/http";
 
 export const runtime = "nodejs";
@@ -26,11 +28,15 @@ async function handle(request: Request) {
     if (method === "GET" && path.join("/") === "health")
       return Response.json({ ok: true, mode: "shared-demo" }, { headers });
     if (method === "POST" && path[0] === "ai" && path.length === 2) {
-      if (!["questions", "card"].includes(path[1]))
+      if (!["questions", "card", "quality"].includes(path[1]))
         throw new ApiError(404, "NOT_FOUND", "Маршрут не найден.");
       guardAiRate();
       const body = await readJson(request);
       const provider = modelProvider();
+      if (path[1] === "quality") {
+        const input = z.object({ content: contentSchema, industry: z.string().max(100) }).strict().parse(body);
+        return Response.json(await reviewQuality(input.content, input.industry, provider), { headers });
+      }
       const result =
         path[1] === "questions"
           ? await assistQuestions(questionsInput.parse(body), provider)
@@ -40,6 +46,10 @@ async function handle(request: Request) {
     const service = new TaskService(
       createRepository(),
       process.env.DEMO_OWNER_ID || "demo-business",
+      async (content, industry) => {
+        guardAiRate();
+        return reviewQuality(content, industry, modelProvider());
+      },
     );
     let result: unknown;
     if (method === "GET" && path.join("/") === "tasks") {
@@ -69,6 +79,8 @@ async function handle(request: Request) {
         result = await service.save(id, await readJson(request));
       else if (method === "POST" && path[2] === "confirm")
         result = await service.confirm(id, await readJson(request));
+      else if (method === "POST" && path[2] === "review")
+        result = await service.review(id, await readJson(request));
       else if (method === "POST" && path[2] === "publish") {
         result = await service.publish(id, await readJson(request));
       } else if (method === "POST" && path[2] === "proposals")

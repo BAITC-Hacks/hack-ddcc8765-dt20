@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { newTask, taskSchema, type Task } from "../contracts";
+import { newTask, taskSchema, type Task, type TaskContent } from "../contracts";
+import { qualityReviewSchema, type QualityReview } from "../quality-contracts";
+import { calculateReviewedScore, fallbackQualityReview, qualityInputKey } from "../quality";
 import {
   listPublishedTasks,
   toPublishedTask,
@@ -66,6 +68,7 @@ export class TaskService {
   constructor(
     private repo: Repository,
     private owner: string,
+    private assessQuality: (content: TaskContent, industry: string) => Promise<QualityReview> = async (content, industry) => fallbackQualityReview(content, industry),
   ) {}
   private async owned(id: string) {
     z.uuid().parse(id);
@@ -95,6 +98,7 @@ export class TaskService {
     const task = {
       ...row.task,
       ...input,
+      qualityReview: row.task.qualityReview?.inputKey === qualityInputKey(input.draft, input.industry) ? row.task.qualityReview : null,
       revision: row.revision + 1,
       updatedAt: new Date().toISOString(),
     };
@@ -109,9 +113,24 @@ export class TaskService {
       })
       .strict()
       .parse(body);
-    return this.transition(id, expectedRevision, (task) =>
-      confirmTask(task, true),
-    );
+    return this.transition(id, expectedRevision, async (task) => {
+      const confirmed = confirmTask(task, true);
+      const qualityReview = await this.qualityFor(task);
+      return { ...confirmed, qualityReview, confirmedScore: calculateReviewedScore(task.draft, qualityReview) };
+    });
+  }
+  private async qualityFor(task: Task, force = false) {
+    const inputKey = qualityInputKey(task.draft, task.industry);
+    if (!force && task.qualityReview?.inputKey === inputKey) return task.qualityReview;
+    const review = qualityReviewSchema.parse(await this.assessQuality(task.draft, task.industry));
+    if (review.inputKey !== inputKey) throw conflict();
+    return review;
+  }
+  async review(id: string, body: unknown) {
+    const { expectedRevision } = z.object({ expectedRevision: z.number().int().nonnegative() }).strict().parse(body);
+    return this.transition(id, expectedRevision, async (task) => ({
+      ...task, qualityReview: await this.qualityFor(task, true), updatedAt: new Date().toISOString(),
+    }));
   }
   async publish(id: string, body: unknown) {
     const { expectedRevision } = z
@@ -123,14 +142,15 @@ export class TaskService {
   private async transition(
     id: string,
     expectedRevision: number,
-    transform: (task: Task) => Task,
+    transform: (task: Task) => Task | Promise<Task>,
   ) {
     const row = await this.owned(id);
     if (row.revision !== expectedRevision) throw conflict();
     let task: Task;
     try {
-      task = { ...transform(row.task), revision: row.revision + 1 };
-    } catch {
+      task = { ...await transform(row.task), revision: row.revision + 1 };
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
       throw new ApiError(
         409,
         "INVALID_STATE",

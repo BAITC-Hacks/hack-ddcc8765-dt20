@@ -7,10 +7,13 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "check:ai": "node scripts/check-ai.mjs",
+    "smoke:backend": "node scripts/smoke-backend.mjs"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.15"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "1.1.23",
