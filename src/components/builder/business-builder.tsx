@@ -15,6 +15,8 @@ import {
   FileText,
   FolderOpen,
   Lightbulb,
+  LayoutGrid,
+  BriefcaseBusiness,
   LoaderCircle,
   Plus,
   Rocket,
@@ -331,6 +333,12 @@ export function BusinessBuilder({ initialId }: { initialId?: string }) {
             <span />
             {dataMode === "local" ? "Демо-режим" : "Серверный режим"}
           </span>
+          <button type="button" className="button text-button" onClick={() => void navigate("/catalog")} disabled={readOnly} aria-label="Каталог задач">
+            <LayoutGrid size={17} aria-hidden />Каталог
+          </button>
+          <button type="button" className="button text-button" onClick={() => void navigate("/business")} disabled={readOnly} aria-label="Предложения бизнесу">
+            <BriefcaseBusiness size={17} aria-hidden />Предложения
+          </button>
           <button
             className="button text-button"
             onClick={() => void showDrafts()}
